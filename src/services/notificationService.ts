@@ -526,3 +526,33 @@ export async function unarchiveNotification(id: number) {
   
   return result.rows[0];
 }
+
+export async function getHomePageNotifications(): Promise<Record<string, Array<{ name: string, notification_id: string }>>> {
+  const checkColumn = await pool.query(`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name = 'notifications' AND column_name = 'is_archived'
+  `);
+
+  let result;
+  if (checkColumn && checkColumn.rowCount != null && checkColumn.rowCount > 0) {
+    result = await pool.query(
+      'SELECT id, title, category FROM notifications WHERE is_archived = FALSE ORDER BY created_at DESC'
+    );
+  } else {
+    result = await pool.query(
+      'SELECT id, title, category FROM notifications ORDER BY created_at DESC'
+    );
+  }
+
+  // Group notifications by category, mapping to { name, notification_id }
+  const grouped: Record<string, Array<{ name: string, notification_id: string }>> = {};
+  for (const n of result.rows) {
+    const category = n.category || 'Uncategorized';
+    if (!grouped[category]) grouped[category] = [];
+    grouped[category].push({ name: n.title, notification_id: n.id.toString() });
+  }
+
+  return grouped;
+}
+

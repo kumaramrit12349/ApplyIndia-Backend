@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { addCompleteNotification, approveNotification, archiveNotification, editNotification, getNotificationById, unarchiveNotification, viewNotifications } from '../services/notificationService';
+import { addCompleteNotification, approveNotification, archiveNotification, editNotification, getHomePageNotifications, getNotificationById, unarchiveNotification, viewNotifications } from '../services/notificationService';
 
 const router = Router();
 /******************************************************************************
@@ -31,7 +31,7 @@ router.get('/view', async (req, res) => {
 
 
 // Get single notification by ID (for edit/review)
-router.get('/:id', async (req, res) => {
+router.get('/getById/:id', async (req, res) => {
   try {
     const notification = await getNotificationById(Number(req.params.id));
     if (!notification) {
@@ -85,6 +85,16 @@ router.patch('/unarchive/:id', async (req, res) => {
     res.json({ success: true, notification });
   } catch (err) {
     res.status(500).json({ error: 'Failed to unarchive', details: err });
+  }
+});
+
+// Group notifications by category for the HomePage
+router.get('/home', async (req, res) => {
+  try {
+    const grouped = await getHomePageNotifications();
+    res.json({ success: true, data: grouped });
+  } catch (err) {
+    res.status(500).json({ error: 'Database error', details: err });
   }
 });
 
