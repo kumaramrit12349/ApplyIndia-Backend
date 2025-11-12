@@ -528,22 +528,27 @@ export async function unarchiveNotification(id: number) {
 }
 
 export async function getHomePageNotifications(): Promise<Record<string, Array<{ name: string, notification_id: string }>>> {
+  // Check for is_archived column existence
   const checkColumn = await pool.query(`
     SELECT column_name
     FROM information_schema.columns
-    WHERE table_name = 'notifications' AND column_name = 'is_archived'
+    WHERE table_name = 'notifications' AND column_name = 'isarchived'
   `);
 
-  let result;
-  if (checkColumn && checkColumn.rowCount != null && checkColumn.rowCount > 0) {
-    result = await pool.query(
-      'SELECT id, title, category FROM notifications WHERE is_archived = FALSE ORDER BY created_at DESC'
-    );
-  } else {
-    result = await pool.query(
-      'SELECT id, title, category FROM notifications ORDER BY created_at DESC'
-    );
+  // Only proceed if is_archived column actually exists
+  if (!checkColumn || checkColumn.rowCount === 0) {
+    // If is_archived does NOT exist, return empty (or handle as per your app logic)
+    return {};
   }
+
+  // Now fetch only those notifications which are not archived and approved
+  const result = await pool.query(
+    `SELECT id, title, category
+     FROM notifications
+     WHERE isarchived = FALSE
+       AND approved_at IS NOT NULL
+     ORDER BY created_at DESC`
+  );
 
   // Group notifications by category, mapping to { name, notification_id }
   const grouped: Record<string, Array<{ name: string, notification_id: string }>> = {};
