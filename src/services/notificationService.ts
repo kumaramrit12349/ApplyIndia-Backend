@@ -1,5 +1,5 @@
 import { pool } from "../config/pgConfig";
-import { Notification } from "../models/Notification";
+import { Notification, NotificationListResponse, NotificationRow } from "../models/Notification";
 
 // Helper functions for type conversion
 const parseIntSafe = (val: any) => {
@@ -562,39 +562,75 @@ export async function getHomePageNotifications(): Promise<Record<string, Array<{
 }
 
 // Get notifications by category
-export async function getNotificationsByCategory(category: string, page: number, limit: number) {
-  console.log('category', category, 'page', page, 'limit', limit);
+export async function getNotificationsByCategory(
+  category: string,
+  page: number,
+  limit: number,
+  searchValue?: string
+): Promise<NotificationListResponse> {
   const offset = (page - 1) * limit;
 
-  const result = await pool.query(
-    `SELECT id, title
-     FROM notifications
-     WHERE isarchived = FALSE
-       AND approved_at IS NOT NULL
-       AND category = $1
-     ORDER BY created_at DESC
-     LIMIT $2 OFFSET $3`,
-    [category, limit, offset]
-  );
+  const whereClauses: string[] = [
+    "isarchived = FALSE",
+    "approved_at IS NOT NULL"
+  ];
+  const params: any[] = [];
 
-  const countResult = await pool.query(
-    `SELECT COUNT(*) AS total
-     FROM notifications
-     WHERE isarchived = FALSE
-       AND approved_at IS NOT NULL
-       AND category = $1`,
-    [category]
-  );
+  // Handle category parameter
+  if (category && category.toLowerCase() !== "all") {
+    whereClauses.push(`category = $${params.length + 1}`);
+    params.push(category);
+  }
 
-  const total = parseInt(countResult.rows[0].total, 10);
-  const rowCount = result.rowCount ?? 0; // Safe default!
+  // Handle search value parameter
+  if (searchValue && typeof searchValue === "string" && searchValue.trim() !== "") {
+    whereClauses.push(
+      `(LOWER(title) LIKE $${params.length + 1} OR LOWER(department) LIKE $${params.length + 2})`
+    );
+    params.push(`%${searchValue.toLowerCase()}%`);
+    params.push(`%${searchValue.toLowerCase()}%`);
+  }
+
+  const where = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+
+  // Add limit/offset as final parameters (safe as numbers)
+  params.push(limit);  // LIMIT will be params.length
+  params.push(offset); // OFFSET will be params.length
+
+  // Calculate parameter indices for LIMIT and OFFSET placeholders
+  const limitIdx = params.length - 1;   // OFFSET param (last)
+  const offsetIdx = params.length - 2;  // LIMIT param (second last)
+
+  const notificationsSql = `
+    SELECT id, title
+    FROM notifications
+    ${where}
+    ORDER BY created_at DESC
+    LIMIT $${offsetIdx + 1} OFFSET $${limitIdx + 1}
+  `;
+
+  // Count query, omit limit/offset
+  const countSql = `
+    SELECT COUNT(*) AS total
+    FROM notifications
+    ${where}
+  `;
+  const countParams = params.slice(0, params.length - 2);
+
+  // Query database
+  const result = await pool.query<NotificationRow>(notificationsSql, params);
+  const countResult = await pool.query<{ total: string }>(countSql, countParams);
+
+  const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
+  const rowCount = result.rowCount ?? 0;
   const hasMore = offset + rowCount < total;
 
   const data = result.rows.map(row => ({
     name: row.title,
-    notification_id: row.id.toString(),
+    notification_id: String(row.id),
   }));
 
   return { data, total, page, hasMore };
 }
+
 

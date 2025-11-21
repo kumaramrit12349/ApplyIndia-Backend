@@ -102,13 +102,20 @@ router.get('/home', async (req, res) => {
 router.get('/category/:category', async (req, res) => {
   try {
     const { category } = req.params;
+    const { searchValue } = req.query; // <-- query, not params!
     const page = parseInt(req.query.page as string, 10) || 1;
     const limit = parseInt(req.query.limit as string, 10) || 20;
 
-    const result = await getNotificationsByCategory(category, page, limit);
+    const result = await getNotificationsByCategory(
+      category,
+      page,
+      limit,
+      typeof searchValue === "string" ? searchValue : undefined
+    );
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err });
+    console.error(err); // <-- always log!
+    res.status(500).json({ error: 'Database error', details: String(err) });
   }
 });
 
