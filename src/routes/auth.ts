@@ -1,6 +1,6 @@
 // src/routes/auth.ts
 import { Router, Request, Response } from "express";
-import { signUpUser } from "../services/authService";
+import { signInUser, signUpUser } from "../services/authService";
 import {
   IResponse,
   ISignUpRes,
@@ -32,6 +32,29 @@ router.post("/signup", async (req: Request, res: Response) => {
           email: error.details?.email || data.email,
         },
       },
+    };
+    res.status(errData.status).json(errData);
+  }
+});
+
+router.post("/signin", async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+  try {
+
+    const tokens = await signInUser(email, password);
+
+    const resData: IResponse<{ tokens: any }> = {
+      status: 200,
+      message: 'Login successful',
+      data: { tokens },
+    };
+    res.status(200).json(resData);
+  } catch (err: unknown) {
+    const error = err as IErrorWithDetails;
+    const errData: IResponse<{}> = {
+      status: error.code || 400,
+      message: error.message || "Login failed",
+      data: {},
     };
     res.status(errData.status).json(errData);
   }

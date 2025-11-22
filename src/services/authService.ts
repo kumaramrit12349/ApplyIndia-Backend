@@ -1,6 +1,8 @@
 // src/services/authService.ts
 import {
+  AuthFlowType,
   CognitoIdentityProviderClient,
+  InitiateAuthCommand,
   SignUpCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { RegisterRequest } from "../@types/auth";
@@ -50,7 +52,7 @@ export async function signUpUser(data: RegisterRequest) {
   } catch (error: any) {
     logErrorLocation(
       "authService.ts",
-      "registerUser",
+      "signUpUser",
       error,
       "AWS Cognito signup error",
       "",
@@ -67,6 +69,38 @@ export async function signUpUser(data: RegisterRequest) {
       "InternalServerError",
       error.message || "Failed to register user",
       { email }
+    );
+  }
+}
+
+export async function signInUser(email: string, password: string) {
+  if (!email || !password) {
+    createThrowError(400, "BadRequest", "Email and password required", {
+      email,
+    });
+  }
+  const input = {
+    AuthFlow: AuthFlowType.USER_PASSWORD_AUTH,
+    ClientId: process.env.COGNITO_CLIENT_ID!,
+    AuthParameters: {
+      USERNAME: email,
+      PASSWORD: password,
+    },
+  };
+
+  const command = new InitiateAuthCommand(input);
+
+  try {
+    const response = await cognito.send(command);
+    return response.AuthenticationResult; // tokens, etc.
+  } catch (error: any) {
+    logErrorLocation(
+      "authService.ts",
+      "signInUser",
+      error,
+      "AWS Cognito signup error",
+      "",
+      { }
     );
   }
 }
