@@ -124,7 +124,7 @@ router.get("/me", authenticateToken, (req: Request, res: Response) => {
   });
 });
 
-router.post("/signout", (req: Request, res: Response) => {
+router.post("/logout", (req: Request, res: Response) => {
   res.clearCookie("accessToken");
   res.clearCookie("idToken");
   res.clearCookie("refreshToken");
