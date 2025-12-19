@@ -18,7 +18,6 @@ export async function signUpUser(data: RegisterRequest) {
   if (!email || !password || !given_name || !family_name || !gender) {
     createThrowError(400, "BadRequest", "All fields are required", { email });
   }
-
   if (
     password.includes(email) ||
     password.includes(given_name) ||
@@ -31,7 +30,6 @@ export async function signUpUser(data: RegisterRequest) {
       { email }
     );
   }
-
   const input = {
     ClientId: process.env.COGNITO_CLIENT_ID!,
     Username: email,
@@ -43,9 +41,7 @@ export async function signUpUser(data: RegisterRequest) {
       { Name: "gender", Value: gender },
     ],
   };
-
   const command = new SignUpCommand(input);
-
   try {
     const response = await cognito.send(command);
     return response;
@@ -58,7 +54,6 @@ export async function signUpUser(data: RegisterRequest) {
       "",
       { data }
     );
-
     if (error.name === "UsernameExistsException") {
       createThrowError(400, "Conflict", "User already exists with this email", {
         email,
@@ -87,20 +82,23 @@ export async function signInUser(email: string, password: string) {
       PASSWORD: password,
     },
   };
-
   const command = new InitiateAuthCommand(input);
-
   try {
     const response = await cognito.send(command);
-    return response.AuthenticationResult; // tokens, etc.
+    if (!response.AuthenticationResult) {
+      createThrowError(401, "Unauthorized", "Authentication failed", { email });
+    }
+    return response.AuthenticationResult; // { AccessToken, IdToken, RefreshToken, ... }
   } catch (error: any) {
     logErrorLocation(
       "authService.ts",
       "signInUser",
       error,
-      "AWS Cognito signup error",
+      "AWS Cognito sign-in error",
       "",
-      { }
+      { email }
     );
+    // Re-throw so the route catch block can map error.name to HTTP status/message
+    throw error;
   }
 }
