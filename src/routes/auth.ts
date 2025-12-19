@@ -1,5 +1,10 @@
 import { Router, Request, Response } from "express";
-import { signInUser, signUpUser } from "../services/authService";
+import {
+  confirmSignUp,
+  resendConfirmationCode,
+  signInUser,
+  signUpUser,
+} from "../services/authService";
 import {
   IResponse,
   ISignUpRes,
@@ -124,6 +129,74 @@ router.post("/signout", (req: Request, res: Response) => {
   res.clearCookie("idToken");
   res.clearCookie("refreshToken");
   res.json({ success: true, message: "Logged out" });
+});
+
+// POST /api/auth/confirm
+router.post("/confirm", async (req: Request, res: Response) => {
+  const { email, code } = req.body;
+
+  try {
+    await confirmSignUp(email, code);
+
+    return res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Account verified successfully. You can now log in.",
+      data: {},
+    });
+  } catch (error: any) {
+    let status = 400;
+    let message = error.message || "Failed to verify account";
+
+    if (error.name === "CodeMismatchException") {
+      message = "Invalid verification code.";
+    } else if (error.name === "ExpiredCodeException") {
+      message = "Verification code expired. Please request a new one.";
+    } else if (error.name === "UserNotFoundException") {
+      status = 404;
+      message = "User not found.";
+    } else if (error.name === "NotAuthorizedException") {
+      message = "User is already confirmed.";
+    }
+
+    return res.status(status).json({
+      status,
+      success: false,
+      message,
+      data: {},
+    });
+  }
+});
+
+// POST /api/auth/resend-code
+router.post("/resend-code", async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  try {
+    await resendConfirmationCode(email);
+
+    return res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Verification code sent to your email.",
+      data: {},
+    });
+  } catch (error: any) {
+    let status = 400;
+    let message = error.message || "Failed to resend verification code";
+
+    if (error.name === "UserNotFoundException") {
+      status = 404;
+      message = "User not found.";
+    }
+
+    return res.status(status).json({
+      status,
+      success: false,
+      message,
+      data: {},
+    });
+  }
 });
 
 export default router;
