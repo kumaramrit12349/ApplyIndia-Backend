@@ -1,25 +1,26 @@
 import { Router } from 'express';
 import { addCompleteNotification, approveNotification, archiveNotification, editNotification, getHomePageNotifications, getNotificationById, getNotificationsByCategory, unarchiveNotification, viewNotifications } from '../services/notificationService';
+import { authenticateToken } from '../middlewares/authMiddleware';
 
 const router = Router();
 /******************************************************************************
- *             Add Notification - "POST /api/notification/add"
+ *   Add Notification - "POST /api/notification/add" (ADMIN / AUTH ONLY)
  ******************************************************************************/
-router.post("/add", async (req, res) => {
+router.post("/add", authenticateToken, async (req, res) => {
   try {
     const result = await addCompleteNotification(req.body);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error("Error adding notification:", error);
-    res.status(500).json({ 
-      success: false, 
-      error: "Failed to add notification" 
+    res.status(500).json({
+      success: false,
+      error: "Failed to add notification",
     });
   }
 });
 
 // Get all active notifications
-router.get('/view', async (req, res) => {
+router.get('/view', authenticateToken, async (req, res) => {
   try {
     const notifications = await viewNotifications();
     res.json({ success: true, notifications });
@@ -31,7 +32,7 @@ router.get('/view', async (req, res) => {
 
 
 // Get single notification by ID (for edit/review)
-router.get('/getById/:id', async (req, res) => {
+router.get('/getById/:id', authenticateToken, async (req, res) => {
   try {
     const notification = await getNotificationById(Number(req.params.id));
     if (!notification) {
@@ -45,7 +46,7 @@ router.get('/getById/:id', async (req, res) => {
 
 
 // Edit notification
-router.put('/edit/:id', async (req, res) => {
+router.put('/edit/:id', authenticateToken, async (req, res) => {
   try {
     const notification = await editNotification(Number(req.params.id), req.body);
     res.json({ success: true, notification });
@@ -55,7 +56,7 @@ router.put('/edit/:id', async (req, res) => {
 });
 
 // Approve notification
-router.patch('/approve/:id', async (req, res) => {
+router.patch('/approve/:id', authenticateToken, async (req, res) => {
   try {
     const notification = await approveNotification(
       Number(req.params.id),
@@ -69,7 +70,7 @@ router.patch('/approve/:id', async (req, res) => {
 });
 
 // Delete notification (mark is_archived = true)
-router.delete('/delete/:id', async (req, res) => {
+router.delete('/delete/:id', authenticateToken, async (req, res) => {
   try {
     const notification = await archiveNotification(Number(req.params.id));
     res.json({ success: true, notification });
@@ -79,7 +80,7 @@ router.delete('/delete/:id', async (req, res) => {
 });
 
 // Unarchive notification
-router.patch('/unarchive/:id', async (req, res) => {
+router.patch('/unarchive/:id', authenticateToken, async (req, res) => {
   try {
     const notification = await unarchiveNotification(Number(req.params.id));
     res.json({ success: true, notification });
@@ -88,7 +89,7 @@ router.patch('/unarchive/:id', async (req, res) => {
   }
 });
 
-// Group notifications by category for the HomePage
+// Group notifications by category for the HomePage (PUBLIC)
 router.get('/home', async (req, res) => {
   try {
     const grouped = await getHomePageNotifications();
@@ -98,7 +99,7 @@ router.get('/home', async (req, res) => {
   }
 });
 
-// Group notifications by category for the HomePage
+// Group notifications by category for the HomePage (PUBLIC)
 router.get('/category/:category', async (req, res) => {
   try {
     const { category } = req.params;
