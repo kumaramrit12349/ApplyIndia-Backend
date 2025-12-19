@@ -11,7 +11,7 @@ import {
   RegisterRequest,
   IErrorWithDetails,
 } from "../@types/auth";
-import { authenticateToken } from "../middlewares/authMiddleware";
+import { authenticateMe, authenticateToken } from "../middlewares/authMiddleware";
 
 const router = Router();
 
@@ -45,7 +45,6 @@ router.post("/signup", async (req: Request, res: Response) => {
 router.post("/signin", async (req: Request, res: Response) => {
   const { email, password } = req.body;
   try {
-    // 1) Basic validation
     if (!email || !password) {
       return res.status(400).json({
         status: 400,
@@ -54,7 +53,7 @@ router.post("/signin", async (req: Request, res: Response) => {
         data: {},
       });
     }
-    // 2) Authenticate with Cognito
+
     const tokens = await signInUser(email, password);
     if (!tokens || !tokens.AccessToken) {
       return res.status(401).json({
@@ -64,26 +63,40 @@ router.post("/signin", async (req: Request, res: Response) => {
         data: {},
       });
     }
+
     const isProd = process.env.NODE_ENV === "production";
-    // 3) HttpOnly cookie for access token (used by /auth/me middleware)
+
+    // Access token cookie (for API auth)
     res.cookie("accessToken", tokens.AccessToken, {
       httpOnly: true,
-      secure: isProd, // HTTPS only in prod
-      sameSite: isProd ? "none" : "lax", // important for localhost:5173 ↔ 4000
-      maxAge: 60 * 60 * 1000, // 1 hour
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 60 * 60 * 1000,
       path: "/",
     });
-    // 4) Optional refresh token cookie for silent refresh later
+
+    // ID token cookie (for /auth/me profile info)
+    if (tokens.IdToken) {
+      res.cookie("idToken", tokens.IdToken, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? "none" : "lax",
+        maxAge: 60 * 60 * 1000,
+        path: "/",
+      });
+    }
+
+    // Optional refresh token
     if (tokens.RefreshToken) {
       res.cookie("refreshToken", tokens.RefreshToken, {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
         path: "/",
       });
     }
-    // 5) Minimal response – no tokens, just a success flag/message
+
     const resData: IResponse<{}> = {
       status: 200,
       success: true,
@@ -93,7 +106,6 @@ router.post("/signin", async (req: Request, res: Response) => {
     return res.status(200).json(resData);
   } catch (err: unknown) {
     const error = err as IErrorWithDetails;
-    // 6) Map common Cognito errors to friendly responses
     let status = 400;
     let message = error.message || "Login failed";
 
@@ -107,6 +119,7 @@ router.post("/signin", async (req: Request, res: Response) => {
       status = 404;
       message = "User does not exist";
     }
+
     const errData: IResponse<{}> = {
       status,
       success: false,
@@ -117,10 +130,19 @@ router.post("/signin", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/me", authenticateToken, (req: Request, res: Response) => {
-  res.json({
+
+router.get("/me", authenticateMe, (req: Request, res: Response) => {
+  const user = (req as any).user;
+
+  return res.json({
     success: true,
-    user: (req as any).user,
+    user: {
+      sub: user.sub,
+      email: user.email,
+      given_name: user.given_name,
+      family_name: user.family_name,
+      // add more if present in ID token
+    },
   });
 });
 

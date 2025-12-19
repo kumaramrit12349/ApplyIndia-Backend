@@ -16,18 +16,20 @@ async function getKey(header: any, callback: any) {
   }
 }
 
+// For protecting APIs with the access token
 export const authenticateToken = (req: any, res: any, next: any) => {
   const accessToken = req?.cookies?.accessToken;
   if (!accessToken) {
     return res.status(401).json({ error: "Access denied" });
   }
+
   jwt.verify(
     accessToken,
     getKey,
     { algorithms: ["RS256"] },
     (err: any, decoded: any) => {
       if (err) {
-        console.error("JWT verify error:", err); // <--- log the real reason
+        console.error("JWT verify error (accessToken):", err);
         return res.status(403).json({ error: "Invalid token" });
       }
       req.user = decoded;
@@ -35,3 +37,27 @@ export const authenticateToken = (req: any, res: any, next: any) => {
     }
   );
 };
+
+// authMiddleware.ts (same file)
+export const authenticateMe = (req: any, res: any, next: any) => {
+  const idToken = req?.cookies?.idToken;
+  if (!idToken) {
+    return res.status(401).json({ error: "Access denied" });
+  }
+
+  jwt.verify(
+    idToken,
+    getKey,
+    { algorithms: ["RS256"] },
+    (err: any, decoded: any) => {
+      if (err) {
+        console.error("JWT verify error (idToken /me):", err);
+        return res.status(403).json({ error: "Invalid token" });
+      }
+      req.user = decoded;
+      next();
+    }
+  );
+};
+
+
