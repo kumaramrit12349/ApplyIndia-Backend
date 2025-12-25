@@ -31,8 +31,8 @@ router.get('/view', authenticateToken, async (req, res) => {
 
 
 
-// Get single notification by ID (for edit/review)
-router.get('/getById/:id', authenticateToken, async (req, res) => {
+// Get single notification by ID (for edit/review) (PUBLIC)
+router.get('/getById/:id', async (req, res) => {
   try {
     const notification = await getNotificationById(Number(req.params.id));
     if (!notification) {
