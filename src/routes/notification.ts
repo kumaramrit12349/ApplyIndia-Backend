@@ -1,6 +1,16 @@
-import { Router } from 'express';
-import { addCompleteNotification, approveNotification, archiveNotification, editNotification, getHomePageNotifications, getNotificationById, getNotificationsByCategory, unarchiveNotification, viewNotifications } from '../services/notificationService';
-import { authenticateToken } from '../middlewares/authMiddleware';
+import { Router } from "express";
+import {
+  addCompleteNotification,
+  approveNotification,
+  archiveNotification,
+  editCompleteNotification,
+  getHomePageNotifications,
+  getNotificationById,
+  getNotificationsByCategory,
+  unarchiveNotification,
+  viewNotifications,
+} from "../services/notificationService";
+import { authenticateToken } from "../middlewares/authMiddleware";
 
 const router = Router();
 /******************************************************************************
@@ -20,87 +30,87 @@ router.post("/add", authenticateToken, async (req, res) => {
 });
 
 // Get all active notifications
-router.get('/view', authenticateToken, async (req, res) => {
+router.get("/view", authenticateToken, async (req, res) => {
   try {
     const notifications = await viewNotifications();
     res.json({ success: true, notifications });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err });
+    res.status(500).json({ error: "Database error", details: err });
   }
 });
 
-
-
 // Get single notification by ID (for edit/review) (PUBLIC)
-router.get('/getById/:id', async (req, res) => {
+router.get("/getById/:id", async (req, res) => {
   try {
-    const notification = await getNotificationById(Number(req.params.id));
+    console.log("req.params", req.params.id);
+    const notification = await getNotificationById(req.params?.id);
     if (!notification) {
-      return res.status(404).json({ error: 'Notification not found' });
+      return res.status(404).json({ error: "Notification not found" });
     }
     res.json({ success: true, notification });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err });
+    res.status(500).json({ error: "Database error", details: err });
   }
 });
 
-
 // Edit notification
-router.put('/edit/:id', authenticateToken, async (req, res) => {
+router.put("/edit/:id", authenticateToken, async (req, res) => {
   try {
-    const notification = await editNotification(Number(req.params.id), req.body);
+    const notification = await editCompleteNotification(
+      req.params?.id,
+      req.body
+    );
     res.json({ success: true, notification });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err });
+    res.status(500).json({ error: "Database error", details: err });
   }
 });
 
 // Approve notification
-router.patch('/approve/:id', authenticateToken, async (req, res) => {
+router.patch("/approve/:id", authenticateToken, async (req, res) => {
   try {
     const notification = await approveNotification(
-      Number(req.params.id),
-      req.body.approved_by || 'admin',
-      req.body.verified_by || 'admin'
+      req.params.id,
+      req.body.approved_by || "admin"
     );
     res.json({ success: true, notification });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err });
+    res.status(500).json({ error: "Database error", details: err });
   }
 });
 
 // Delete notification (mark is_archived = true)
-router.delete('/delete/:id', authenticateToken, async (req, res) => {
+router.delete("/delete/:id", authenticateToken, async (req, res) => {
   try {
-    const notification = await archiveNotification(Number(req.params.id));
+    const notification = await archiveNotification(req.params.id);
     res.json({ success: true, notification });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err });
+    res.status(500).json({ error: "Database error", details: err });
   }
 });
 
 // Unarchive notification
-router.patch('/unarchive/:id', authenticateToken, async (req, res) => {
+router.patch("/unarchive/:id", authenticateToken, async (req, res) => {
   try {
-    const notification = await unarchiveNotification(Number(req.params.id));
+    const notification = await unarchiveNotification(req.params.id);
     res.json({ success: true, notification });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to unarchive', details: err });
+    res.status(500).json({ error: "Failed to unarchive", details: err });
   }
 });
 
 // Group notifications by category for the HomePage (PUBLIC)
-router.get('/home', async (req, res) => {
+router.get("/home", async (req, res) => {
   try {
     const grouped = await getHomePageNotifications();
     res.json({ success: true, data: grouped });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: err });
+    res.status(500).json({ error: "Database error", details: err });
   }
 });
 
 // Group notifications by category for the HomePage (PUBLIC)
-router.get('/category/:category', async (req, res) => {
+router.get("/category/:category", async (req, res) => {
   try {
     const { category } = req.params;
     const { searchValue } = req.query;
@@ -115,10 +125,8 @@ router.get('/category/:category', async (req, res) => {
     );
     res.json({ success: true, ...result });
   } catch (err) {
-    res.status(500).json({ error: 'Database error', details: String(err) });
+    res.status(500).json({ error: "Database error", details: String(err) });
   }
 });
-
-
 
 export default router;

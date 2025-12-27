@@ -1,158 +1,130 @@
+import { NotificationForm, NotificationListItem } from "../@types/notification";
 import { pool } from "../config/pgConfig";
-import { Notification, NotificationListResponse, NotificationRow } from "../models/Notification";
-
-// Helper functions for type conversion
-const parseIntSafe = (val: any) => {
-  const parsed = parseInt(val);
-  return isNaN(parsed) ? null : parsed;
-};
-
-const parseDecimalSafe = (val: any) => {
-  const parsed = parseFloat(val);
-  return isNaN(parsed) ? null : parsed;
-};
-
-
-
+import {
+  Notification,
+  NotificationListResponse,
+  NotificationRow,
+} from "../models/Notification";
+import { NOTIFICATION_COLUMNS as C } from "../constant/Notification";
+import { ALL_TABLE_NAME } from "../constant/sharedConstant";
 
 // Add complete notification with all related tables
-export async function addCompleteNotification(data: any) {
+export async function addCompleteNotification(data: NotificationForm) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    const query = `
+      INSERT INTO notifications (
+        ${C.TITLE},
+        ${C.CATEGORY},
+        ${C.DEPARTMENT},
+        ${C.TOTAL_VACANCIES},
+        ${C.SHORT_DESCRIPTION},
+        ${C.LONG_DESCRIPTION},
 
-    // Helper function to parse integers safely
-    const parseIntSafe = (val: any) => {
-      const parsed = parseInt(val);
-      return isNaN(parsed) ? null : parsed;
-    };
+        ${C.IS_ADMIT_CARD_PUBLISHED},
+        ${C.IS_RESULT_PUBLISHED},
+        ${C.IS_ANSWER_KEY_PUBLISHED},
 
-    // Helper function to parse decimals safely
-    const parseDecimalSafe = (val: any) => {
-      const parsed = parseFloat(val);
-      return isNaN(parsed) ? null : parsed;
-    };
+        ${C.START_DATE},
+        ${C.LAST_DATE_TO_APPLY},
+        ${C.EXAM_DATE},
+        ${C.ADMIT_CARD_AVAILABLE_DATE},
+        ${C.RESULT_DATE},
+        ${C.IMPORTANT_DATE_DETAILS},
 
-    // 1. Insert into notifications table
-    const notificationResult = await client.query(
-      `INSERT INTO notifications 
-       (title, category, department, total_vacancies, 
-        isAdminCardAvailable, isResultPublished, isAnswerKeyPublished, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW()) 
-       RETURNING id`,
-      [
-        data.title,
-        data.category,
-        null, // We'll handle department separately if needed
-        parseIntSafe(data.total_vacancies),
-        data.isAdminCardAvailable || false,
-        data.isResultPublished || false,
-        data.isAnswerKeyPublished || false,
-      ]
-    );
+        ${C.GENERAL_FEE},
+        ${C.OBC_FEE},
+        ${C.SC_FEE},
+        ${C.ST_FEE},
+        ${C.PH_FEE},
+        ${C.OTHER_FEE_DETAILS},
 
-    const notificationId = notificationResult.rows[0].id;
+        ${C.MIN_AGE},
+        ${C.MAX_AGE},
+        ${C.AGE_RELAXATION_DETAILS},
 
-    // 2. Insert into important_dates (if any dates provided)
-    if (data.application_begin_date || data.last_date_for_apply || data.exam_date) {
-      await client.query(
-        `INSERT INTO important_dates 
-         (notification_id, application_begin_date, last_date_for_apply, 
-          exam_date, admit_card_available_date, result_date) 
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          notificationId,
-          data.application_begin_date || null,
-          data.last_date_for_apply || null,
-          data.exam_date || null,
-          data.admit_card_available_date || null,
-          data.result_date || null,
-        ]
-      );
-    }
+        ${C.QUALIFICATION},
+        ${C.SPECIALIZATION},
+        ${C.MIN_PERCENTAGE},
+        ${C.ADDITIONAL_DETAILS},
 
-    // 3. Insert into fees (if any fees provided)
-    if (data.general_fee || data.obc_fee || data.sc_fee) {
-      await client.query(
-        `INSERT INTO fees 
-         (notification_id, general_fee, obc_fee, sc_fee, st_fee, ph_fee, other_fee_details) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          notificationId,
-          parseDecimalSafe(data.general_fee),
-          parseDecimalSafe(data.obc_fee),
-          parseDecimalSafe(data.sc_fee),
-          parseDecimalSafe(data.st_fee),
-          parseDecimalSafe(data.ph_fee),
-          data.other_fee_details || null,
-        ]
-      );
-    }
+        ${C.YOUTUBE_LINK},
+        ${C.APPLY_ONLINE_URL},
+        ${C.NOTIFICATION_PDF_URL},
+        ${C.OFFICIAL_WEBSITE_URL},
+        ${C.ADMIT_CARD_URL},
+        ${C.ANSWER_KEY_URL},
+        ${C.RESULT_URL},
+        ${C.OTHER_LINKS}
+      )
+      VALUES (
+        $1,$2,$3,$4,
+        $5,$6,
+        $7,$8,$9,
+        $10,$11,$12,$13,$14,$15,
+        $16,$17,$18,$19,$20,$21,
+        $22,$23,$24,
+        $25,$26,$27,$28,
+        $29,$30,$31,$32,$33,$34,$35,$36
+      )
+      RETURNING id
+    `;
+    const values = [
+      data.title,
+      data.category,
+      data.department || null,
+      data.total_vacancies,
 
-    // 4. Insert into eligibility (if ages provided)
-    let eligibilityId = null;
-    if (data.min_age || data.max_age) {
-      const eligibilityResult = await client.query(
-        `INSERT INTO eligibility 
-         (notification_id, min_age, max_age, age_relaxation_details) 
-         VALUES ($1, $2, $3, $4) 
-         RETURNING id`,
-        [
-          notificationId,
-          parseIntSafe(data.min_age),
-          parseIntSafe(data.max_age),
-          data.age_relaxation_details || null,
-        ]
-      );
-      eligibilityId = eligibilityResult.rows[0].id;
-    }
+      data.short_description,
+      data.long_description,
 
-    // 5. Insert into education_qualifications (if qualification provided)
-    if (eligibilityId && data.qualification) {
-      await client.query(
-        `INSERT INTO education_qualifications 
-         (eligibility_id, qualification, specialization, min_percentage, additional_details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [
-          eligibilityId,
-          data.qualification,
-          data.specialization || null,
-          parseDecimalSafe(data.min_percentage),
-          data.additional_details || null,
-        ]
-      );
-    }
+      data.is_admit_card_published,
+      data.is_result_published,
+      data.is_answer_key_published,
 
-    // 6. Insert into links (if any links provided)
-    if (data.apply_online_url || data.notification_pdf_url) {
-      await client.query(
-        `INSERT INTO links 
-         (notification_id, apply_online_url, notification_pdf_url, 
-          official_website_url, admit_card_url, result_url, answer_key_url, other_links) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          notificationId,
-          data.apply_online_url || null,
-          data.notification_pdf_url || null,
-          data.official_website_url || null,
-          data.admit_card_url || null,
-          data.result_url || null,
-          data.answer_key_url || null,
-          data.other_links || null,
-        ]
-      );
-    }
+      data.start_date,
+      data.last_date_to_apply,
+      data.exam_date || null,
+      data.admit_card_available_date || null,
+      data.result_date || null,
+      data.important_date_details || null,
 
+      data.general_fee,
+      data.obc_fee,
+      data.sc_fee,
+      data.st_fee,
+      data.ph_fee,
+      data.other_fee_details,
+
+      data.min_age,
+      data.max_age,
+      data.age_relaxation_details,
+
+      data.qualification,
+      data.specialization,
+      data.min_percentage,
+      data.additional_details || null,
+
+      data.youtube_link,
+      data.apply_online_url,
+      data.notification_pdf_url,
+      data.official_website_url,
+      data.admit_card_url || null,
+      data.answer_key_url || null,
+      data.result_url || null,
+      data.other_links || null,
+    ];
+    const result = await client.query(query, values);
     await client.query("COMMIT");
-
     return {
       success: true,
-      notificationId,
-      message: "Notification added successfully",
+      notificationId: result.rows[0].id,
+      message: "Notification created successfully",
     };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Transaction error:", error);
+    console.error("addCompleteNotification error:", error);
     throw error;
   } finally {
     client.release();
@@ -160,404 +132,249 @@ export async function addCompleteNotification(data: any) {
 }
 
 // View all notifications (excluding archived)
-export async function viewNotifications(): Promise<Notification[]> {
-  const checkColumn = await pool.query(`
-    SELECT column_name
-    FROM information_schema.columns
-    WHERE table_name = 'notifications' AND column_name = 'is_archived'
-  `);
-
-  let result;
-
-  if (checkColumn && checkColumn.rowCount != null && checkColumn.rowCount > 0) {
-    result = await pool.query(
-      'SELECT * FROM notifications WHERE is_archived = FALSE ORDER BY created_at DESC'
-    );
-  } else {
-    result = await pool.query(
-      'SELECT * FROM notifications ORDER BY created_at DESC'
-    );
-  }
-
+export async function viewNotifications(): Promise<NotificationListItem[]> {
+  const query = `
+    SELECT
+      ${C.ID},
+      ${C.TITLE},
+      ${C.CATEGORY},
+      ${C.CREATED_AT},
+      ${C.IS_ARCHIVED},
+      ${C.APPROVED_AT}
+    FROM ${ALL_TABLE_NAME.NOTIFICATION}
+    ORDER BY ${C.CREATED_AT} DESC
+  `;
+  const result = await pool.query<NotificationListItem>(query);
   return result.rows;
 }
 
-
-
 // Get single notification by ID with all related data
-export async function getNotificationById(id: number) {
-  const result = await pool.query(
-    `SELECT n.*, 
-      id.application_begin_date, id.last_date_for_apply, id.exam_date, 
-      id.admit_card_available_date, id.result_date,
-      f.general_fee, f.obc_fee, f.sc_fee, f.st_fee, f.ph_fee, f.other_fee_details,
-      e.min_age, e.max_age, e.age_relaxation_details,
-      eq.qualification, eq.specialization, eq.min_percentage, eq.additional_details,
-      l.apply_online_url, l.notification_pdf_url, l.official_website_url,
-      l.admit_card_url, l.result_url, l.answer_key_url, l.other_links
-    FROM notifications n
-    LEFT JOIN important_dates id ON n.id = id.notification_id
-    LEFT JOIN fees f ON n.id = f.notification_id
-    LEFT JOIN eligibility e ON n.id = e.notification_id
-    LEFT JOIN education_qualifications eq ON e.id = eq.eligibility_id
-    LEFT JOIN links l ON n.id = l.notification_id
-    WHERE n.id = $1`,
-    [id]
-  );
-  
-  return result.rows[0] || null;
+export async function getNotificationById(
+  id: string
+): Promise<Notification | null> {
+  // Optional backward-compatibility check (kept but not used)
+  const columnCheckQuery = `
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = $1
+      AND column_name = $2
+  `;
+  await pool.query(columnCheckQuery, [
+    ALL_TABLE_NAME.NOTIFICATION,
+    C.IS_ARCHIVED,
+  ]);
+  const query = `
+    SELECT *
+    FROM ${ALL_TABLE_NAME.NOTIFICATION}
+    WHERE ${C.ID} = $1
+    LIMIT 1
+  `;
+  const result = await pool.query(query, [id]);
+  return result.rows.length > 0 ? result.rows[0] : null;
 }
 
-
-
 // Edit notification with all related tables
-export async function editNotification(id: number, data: any) {
+export async function editCompleteNotification(
+  id: string,
+  data: NotificationForm
+) {
   const client = await pool.connect();
-  
   try {
     await client.query("BEGIN");
+    const query = `
+      UPDATE notifications
+      SET
+        ${C.TITLE} = $1,
+        ${C.CATEGORY} = $2,
+        ${C.DEPARTMENT} = $3,
+        ${C.TOTAL_VACANCIES} = $4,
 
-    // Helper functions
-    const parseIntSafe = (val: any) => {
-      const parsed = parseInt(val);
-      return isNaN(parsed) ? null : parsed;
-    };
+        ${C.SHORT_DESCRIPTION} = $5,
+        ${C.LONG_DESCRIPTION} = $6,
 
-    const parseDecimalSafe = (val: any) => {
-      const parsed = parseFloat(val);
-      return isNaN(parsed) ? null : parsed;
-    };
+        ${C.IS_ADMIT_CARD_PUBLISHED} = $7,
+        ${C.IS_RESULT_PUBLISHED} = $8,
+        ${C.IS_ANSWER_KEY_PUBLISHED} = $9,
 
-    // 1. Update main notifications table
-    await client.query(
-      `UPDATE notifications 
-       SET title = $1, 
-           category = $2, 
-           department = $3,
-           total_vacancies = $4,
-           isAdminCardAvailable = $5, 
-           isResultPublished = $6, 
-           isAnswerKeyPublished = $7, 
-           updated_at = NOW()
-       WHERE id = $8`,
-      [
-        data.title,
-        data.category,
-        data.department,
-        parseIntSafe(data.total_vacancies),
-        data.isadmincardavailable || false,
-        data.isresultpublished || false,
-        data.isanswerkeypublished || false,
-        id
-      ]
-    );
+        ${C.START_DATE} = $10,
+        ${C.LAST_DATE_TO_APPLY} = $11,
+        ${C.EXAM_DATE} = $12,
+        ${C.ADMIT_CARD_AVAILABLE_DATE} = $13,
+        ${C.RESULT_DATE} = $14,
+        ${C.IMPORTANT_DATE_DETAILS} = $15,
 
-    // 2. Update or Insert important_dates
-    const datesCheck = await client.query(
-      'SELECT id FROM important_dates WHERE notification_id = $1',
-      [id]
-    );
+        ${C.GENERAL_FEE} = $16,
+        ${C.OBC_FEE} = $17,
+        ${C.SC_FEE} = $18,
+        ${C.ST_FEE} = $19,
+        ${C.PH_FEE} = $20,
+        ${C.OTHER_FEE_DETAILS} = $21,
 
-    if (datesCheck.rows.length > 0) {
-      // Update existing dates
-      await client.query(
-        `UPDATE important_dates 
-         SET application_begin_date = $1,
-             last_date_for_apply = $2,
-             exam_date = $3,
-             admit_card_available_date = $4,
-             result_date = $5
-         WHERE notification_id = $6`,
-        [
-          data.application_begin_date || null,
-          data.last_date_for_apply || null,
-          data.exam_date || null,
-          data.admit_card_available_date || null,
-          data.result_date || null,
-          id
-        ]
-      );
-    } else if (data.application_begin_date || data.last_date_for_apply || data.exam_date) {
-      // Insert new dates
-      await client.query(
-        `INSERT INTO important_dates 
-         (notification_id, application_begin_date, last_date_for_apply, 
-          exam_date, admit_card_available_date, result_date)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          id,
-          data.application_begin_date || null,
-          data.last_date_for_apply || null,
-          data.exam_date || null,
-          data.admit_card_available_date || null,
-          data.result_date || null
-        ]
-      );
-    }
+        ${C.MIN_AGE} = $22,
+        ${C.MAX_AGE} = $23,
+        ${C.AGE_RELAXATION_DETAILS} = $24,
 
-    // 3. Update or Insert fees
-    const feesCheck = await client.query(
-      'SELECT id FROM fees WHERE notification_id = $1',
-      [id]
-    );
+        ${C.QUALIFICATION} = $25,
+        ${C.SPECIALIZATION} = $26,
+        ${C.MIN_PERCENTAGE} = $27,
+        ${C.ADDITIONAL_DETAILS} = $28,
 
-    if (feesCheck.rows.length > 0) {
-      // Update existing fees
-      await client.query(
-        `UPDATE fees 
-         SET general_fee = $1,
-             obc_fee = $2,
-             sc_fee = $3,
-             st_fee = $4,
-             ph_fee = $5,
-             other_fee_details = $6
-         WHERE notification_id = $7`,
-        [
-          parseDecimalSafe(data.general_fee),
-          parseDecimalSafe(data.obc_fee),
-          parseDecimalSafe(data.sc_fee),
-          parseDecimalSafe(data.st_fee),
-          parseDecimalSafe(data.ph_fee),
-          data.other_fee_details || null,
-          id
-        ]
-      );
-    } else if (data.general_fee || data.obc_fee || data.sc_fee) {
-      // Insert new fees
-      await client.query(
-        `INSERT INTO fees 
-         (notification_id, general_fee, obc_fee, sc_fee, st_fee, ph_fee, other_fee_details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          id,
-          parseDecimalSafe(data.general_fee),
-          parseDecimalSafe(data.obc_fee),
-          parseDecimalSafe(data.sc_fee),
-          parseDecimalSafe(data.st_fee),
-          parseDecimalSafe(data.ph_fee),
-          data.other_fee_details || null
-        ]
-      );
-    }
+        ${C.YOUTUBE_LINK} = $29,
+        ${C.APPLY_ONLINE_URL} = $30,
+        ${C.NOTIFICATION_PDF_URL} = $31,
+        ${C.OFFICIAL_WEBSITE_URL} = $32,
+        ${C.ADMIT_CARD_URL} = $33,
+        ${C.ANSWER_KEY_URL} = $34,
+        ${C.RESULT_URL} = $35,
+        ${C.OTHER_LINKS} = $36,
+        updated_at = NOW()
+      WHERE id = $37
+      RETURNING id;
+    `;
 
-    // 4. Update or Insert eligibility
-    const eligibilityCheck = await client.query(
-      'SELECT id FROM eligibility WHERE notification_id = $1',
-      [id]
-    );
+    const values = [
+      data.title,
+      data.category,
+      data.department || null,
+      data.total_vacancies,
 
-    let eligibilityId = null;
+      data.short_description,
+      data.long_description,
 
-    if (eligibilityCheck.rows.length > 0) {
-      // Update existing eligibility
-      eligibilityId = eligibilityCheck.rows[0].id;
-      await client.query(
-        `UPDATE eligibility 
-         SET min_age = $1,
-             max_age = $2,
-             age_relaxation_details = $3
-         WHERE notification_id = $4`,
-        [
-          parseIntSafe(data.min_age),
-          parseIntSafe(data.max_age),
-          data.age_relaxation_details || null,
-          id
-        ]
-      );
-    } else if (data.min_age || data.max_age) {
-      // Insert new eligibility
-      const eligibilityResult = await client.query(
-        `INSERT INTO eligibility 
-         (notification_id, min_age, max_age, age_relaxation_details)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id`,
-        [
-          id,
-          parseIntSafe(data.min_age),
-          parseIntSafe(data.max_age),
-          data.age_relaxation_details || null
-        ]
-      );
-      eligibilityId = eligibilityResult.rows[0].id;
-    }
+      data.is_admit_card_published,
+      data.is_result_published,
+      data.is_answer_key_published,
 
-    // 5. Update or Insert education_qualifications
-    if (eligibilityId) {
-      const educationCheck = await client.query(
-        'SELECT id FROM education_qualifications WHERE eligibility_id = $1',
-        [eligibilityId]
-      );
+      data.start_date,
+      data.last_date_to_apply,
+      data.exam_date || null,
+      data.admit_card_available_date || null,
+      data.result_date || null,
+      data.important_date_details || null,
 
-      if (educationCheck.rows.length > 0) {
-        // Update existing education
-        await client.query(
-          `UPDATE education_qualifications 
-           SET qualification = $1,
-               specialization = $2,
-               min_percentage = $3,
-               additional_details = $4
-           WHERE eligibility_id = $5`,
-          [
-            data.qualification || null,
-            data.specialization || null,
-            parseDecimalSafe(data.min_percentage),
-            data.additional_details || null,
-            eligibilityId
-          ]
-        );
-      } else if (data.qualification) {
-        // Insert new education
-        await client.query(
-          `INSERT INTO education_qualifications 
-           (eligibility_id, qualification, specialization, min_percentage, additional_details)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [
-            eligibilityId,
-            data.qualification,
-            data.specialization || null,
-            parseDecimalSafe(data.min_percentage),
-            data.additional_details || null
-          ]
-        );
-      }
-    }
+      data.general_fee,
+      data.obc_fee,
+      data.sc_fee,
+      data.st_fee,
+      data.ph_fee,
+      data.other_fee_details,
 
-    // 6. Update or Insert links
-    const linksCheck = await client.query(
-      'SELECT id FROM links WHERE notification_id = $1',
-      [id]
-    );
+      data.min_age,
+      data.max_age,
+      data.age_relaxation_details,
 
-    if (linksCheck.rows.length > 0) {
-      // Update existing links
-      await client.query(
-        `UPDATE links 
-         SET apply_online_url = $1,
-             notification_pdf_url = $2,
-             official_website_url = $3,
-             admit_card_url = $4,
-             result_url = $5,
-             answer_key_url = $6,
-             other_links = $7
-         WHERE notification_id = $8`,
-        [
-          data.apply_online_url || null,
-          data.notification_pdf_url || null,
-          data.official_website_url || null,
-          data.admit_card_url || null,
-          data.result_url || null,
-          data.answer_key_url || null,
-          data.other_links || null,
-          id
-        ]
-      );
-    } else if (data.apply_online_url || data.notification_pdf_url) {
-      // Insert new links
-      await client.query(
-        `INSERT INTO links 
-         (notification_id, apply_online_url, notification_pdf_url, 
-          official_website_url, admit_card_url, result_url, answer_key_url, other_links)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [
-          id,
-          data.apply_online_url || null,
-          data.notification_pdf_url || null,
-          data.official_website_url || null,
-          data.admit_card_url || null,
-          data.result_url || null,
-          data.answer_key_url || null,
-          data.other_links || null
-        ]
-      );
-    }
+      data.qualification,
+      data.specialization,
+      data.min_percentage,
+      data.additional_details || null,
 
+      data.youtube_link,
+      data.apply_online_url,
+      data.notification_pdf_url,
+      data.official_website_url,
+      data.admit_card_url || null,
+      data.answer_key_url || null,
+      data.result_url || null,
+      data.other_links || null,
+
+      id,
+    ];
+    const result = await client.query(query, values);
     await client.query("COMMIT");
-    
-    // Return updated notification
-    return await getNotificationById(id);
-    
+    return {
+      success: true,
+      notificationId: result.rows[0].id,
+      message: "Notification updated successfully",
+    };
   } catch (error) {
     await client.query("ROLLBACK");
-    console.error("Edit notification error:", error);
+    console.error("editCompleteNotification error:", error);
     throw error;
   } finally {
     client.release();
   }
 }
 
-
 // Approve notification
-export async function approveNotification(id: number, approvedBy: string, verifiedBy: string) {
-  const result = await pool.query(
-    `UPDATE notifications 
-     SET approved_at = NOW(), approved_by = $1, 
-         verified_at = NOW(), verified_by = $2
-     WHERE id = $3
-     RETURNING *`,
-    [approvedBy, verifiedBy, id]
-  );
-  
-  return result.rows[0];
+export async function approveNotification(id: string, approvedBy: string) {
+  const query = `
+    UPDATE notifications 
+    SET 
+      ${C.APPROVED_AT} = NOW(),
+      ${C.APPROVED_BY} = $1
+    WHERE ${C.ID} = $2
+    RETURNING *;
+  `;
+  const values = [approvedBy, id];
+  const result = await pool.query(query, values);
+  return result.rows[0] || null;
 }
 
 // Archive notification (soft delete)
-export async function archiveNotification(id: number) {
-  const result = await pool.query(
-    `UPDATE notifications 
-     SET isArchived = true, updated_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
-    [id]
-  );
-  
-  return result.rows[0];
+export async function archiveNotification(id: string) {
+  const query = `
+    UPDATE notifications 
+    SET ${C.IS_ARCHIVED} = true,
+        ${C.UPDATED_AT} = NOW()
+    WHERE ${C.ID} = $1
+    RETURNING *;
+  `;
+  const result = await pool.query(query, [id]);
+  return result.rows[0] || null;
 }
-
 
 // Unarchive notification
-export async function unarchiveNotification(id: number) {
-  const result = await pool.query(
-    `UPDATE notifications 
-     SET isArchived = false, updated_at = NOW()
-     WHERE id = $1
-     RETURNING *`,
-    [id]
-  );
-  
-  return result.rows[0];
+export async function unarchiveNotification(id: string) {
+  const query = `
+    UPDATE ${ALL_TABLE_NAME.NOTIFICATION}
+    SET ${C.IS_ARCHIVED} = false,
+        ${C.UPDATED_AT} = NOW()
+    WHERE ${C.ID} = $1
+    RETURNING *;
+  `;
+  const result = await pool.query(query, [id]);
+  return result.rows[0] || null;
 }
 
-export async function getHomePageNotifications(): Promise<Record<string, Array<{ name: string, notification_id: string }>>> {
-  // Check for is_archived column existence
-  const checkColumn = await pool.query(`
-    SELECT column_name
+export async function getHomePageNotifications(): Promise<
+  Record<string, Array<{ name: string; notification_id: string }>>
+> {
+  // 1) Check if `is_archived` column exists (backward compatibility)
+  const columnCheckResult = await pool.query(
+    `
+    SELECT 1
     FROM information_schema.columns
-    WHERE table_name = 'notifications' AND column_name = 'isarchived'
-  `);
-
-  // Only proceed if is_archived column actually exists
-  if (!checkColumn || checkColumn.rowCount === 0) {
-    // If is_archived does NOT exist, return empty (or handle as per your app logic)
-    return {};
-  }
-
-  // Now fetch only those notifications which are not archived and approved
-  const result = await pool.query(
-    `SELECT id, title, category
-     FROM notifications
-     WHERE isarchived = FALSE
-       AND approved_at IS NOT NULL
-     ORDER BY created_at DESC`
+    WHERE table_name = $1
+      AND column_name = $2
+    `,
+    [ALL_TABLE_NAME.NOTIFICATION, C.IS_ARCHIVED] // 'notifications', 'is_archived'
   );
-
-  // Group notifications by category, mapping to { name, notification_id }
-  const grouped: Record<string, Array<{ name: string, notification_id: string }>> = {};
+  const hasIsArchived =
+    columnCheckResult.rowCount != null && columnCheckResult.rowCount > 0;
+  // 2) Build WHERE clause: if column exists, filter on it; otherwise just use approved_at
+  const whereClause = hasIsArchived
+    ? `WHERE ${C.IS_ARCHIVED} = FALSE AND approved_at IS NOT NULL`
+    : `WHERE approved_at IS NOT NULL`;
+  const query = `
+    SELECT ${C.ID} AS id, ${C.TITLE} AS title, ${C.CATEGORY} AS category
+    FROM ${ALL_TABLE_NAME.NOTIFICATION}
+    ${whereClause}
+    ORDER BY ${C.CREATED_AT} DESC
+  `;
+  const result = await pool.query(query);
+  // 3) Group notifications by category
+  const grouped: Record<
+    string,
+    Array<{ name: string; notification_id: string }>
+  > = {};
   for (const n of result.rows) {
-    const category = n.category || 'Uncategorized';
+    const category = n.category || "Uncategorized";
     if (!grouped[category]) grouped[category] = [];
-    grouped[category].push({ name: n.title, notification_id: n.id.toString() });
+    grouped[category].push({
+      name: n.title,
+      notification_id: n.id.toString(),
+    });
   }
-
   return grouped;
 }
 
@@ -569,68 +386,63 @@ export async function getNotificationsByCategory(
   searchValue?: string
 ): Promise<NotificationListResponse> {
   const offset = (page - 1) * limit;
-
   const whereClauses: string[] = [
-    "isarchived = FALSE",
-    "approved_at IS NOT NULL"
+    `${C.IS_ARCHIVED} = FALSE`, // is_archived = FALSE
+    `${C.APPROVED_AT} IS NOT NULL`,
   ];
   const params: any[] = [];
-
-  // Handle category parameter
+  // Category filter (skip "all")
   if (category && category.toLowerCase() !== "all") {
-    whereClauses.push(`category = $${params.length + 1}`);
+    whereClauses.push(`${C.CATEGORY} = $${params.length + 1}`);
     params.push(category);
   }
-
-  // Handle search value parameter
-  if (searchValue && typeof searchValue === "string" && searchValue.trim() !== "") {
+  // Search filter
+  if (
+    searchValue &&
+    typeof searchValue === "string" &&
+    searchValue.trim() !== ""
+  ) {
+    const likeParam1 = `$${params.length + 1}`;
+    const likeParam2 = `$${params.length + 2}`;
     whereClauses.push(
-      `(LOWER(title) LIKE $${params.length + 1} OR LOWER(department) LIKE $${params.length + 2})`
+      `(LOWER(${C.TITLE}) LIKE ${likeParam1} OR LOWER(${C.DEPARTMENT}) LIKE ${likeParam2})`
     );
-    params.push(`%${searchValue.toLowerCase()}%`);
-    params.push(`%${searchValue.toLowerCase()}%`);
+    const pattern = `%${searchValue.toLowerCase()}%`;
+    params.push(pattern, pattern);
   }
-
-  const where = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
-  // Add limit/offset as final parameters (safe as numbers)
-  params.push(limit);  // LIMIT will be params.length
-  params.push(offset); // OFFSET will be params.length
-
-  // Calculate parameter indices for LIMIT and OFFSET placeholders
-  const limitIdx = params.length - 1;   // OFFSET param (last)
-  const offsetIdx = params.length - 2;  // LIMIT param (second last)
-
+  const where = whereClauses.length
+    ? `WHERE ${whereClauses.join(" AND ")}`
+    : "";
+  // Add LIMIT and OFFSET as final params
+  params.push(limit); // last-1
+  params.push(offset); // last
+  const limitIdx = params.length - 2; // index for LIMIT value in params
+  const offsetIdx = params.length - 1; // index for OFFSET value in params
   const notificationsSql = `
-    SELECT id, title
-    FROM notifications
+    SELECT ${C.ID}, ${C.TITLE}
+    FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
-    ORDER BY created_at DESC
-    LIMIT $${offsetIdx + 1} OFFSET $${limitIdx + 1}
+    ORDER BY ${C.CREATED_AT} DESC
+    LIMIT $${limitIdx + 1} OFFSET $${offsetIdx + 1}
   `;
-
-  // Count query, omit limit/offset
+  // Count query (no limit/offset)
   const countSql = `
     SELECT COUNT(*) AS total
-    FROM notifications
+    FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
   `;
   const countParams = params.slice(0, params.length - 2);
-
-  // Query database
   const result = await pool.query<NotificationRow>(notificationsSql, params);
-  const countResult = await pool.query<{ total: string }>(countSql, countParams);
-
+  const countResult = await pool.query<{ total: string }>(
+    countSql,
+    countParams
+  );
   const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
   const rowCount = result.rowCount ?? 0;
   const hasMore = offset + rowCount < total;
-
-  const data = result.rows.map(row => ({
+  const data = result.rows.map((row) => ({
     name: row.title,
     notification_id: String(row.id),
   }));
-
   return { data, total, page, hasMore };
 }
-
-
