@@ -42,7 +42,6 @@ router.get("/view", authenticateToken, async (req, res) => {
 // Get single notification by ID (for edit/review) (PUBLIC)
 router.get("/getById/:id", async (req, res) => {
   try {
-    console.log("req.params", req.params.id);
     const notification = await getNotificationById(req.params?.id);
     if (!notification) {
       return res.status(404).json({ error: "Notification not found" });

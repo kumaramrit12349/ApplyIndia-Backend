@@ -7,6 +7,7 @@ import {
 } from "../models/Notification";
 import { NOTIFICATION_COLUMNS as C } from "../constant/Notification";
 import { ALL_TABLE_NAME } from "../constant/sharedConstant";
+import { logErrorLocation } from "../utils/errorUtils";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: NotificationForm) {
@@ -122,9 +123,27 @@ export async function addCompleteNotification(data: NotificationForm) {
       notificationId: result.rows[0].id,
       message: "Notification created successfully",
     };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("addCompleteNotification error:", error);
+  } catch (error: unknown) {
+    // rollback best-effort; ignore rollback failure but still log root error
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "ROLLBACK failed in addCompleteNotification:",
+        rollbackError
+      );
+    }
+
+    logErrorLocation(
+      "notificationService.ts",
+      "addCompleteNotification",
+      error,
+      "DB error while creating notification",
+      "",
+      { data }
+    );
+
+    // let upper layer decide HTTP response (e.g., 500)
     throw error;
   } finally {
     client.release();
@@ -144,34 +163,60 @@ export async function viewNotifications(): Promise<NotificationListItem[]> {
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ORDER BY ${C.CREATED_AT} DESC
   `;
-  const result = await pool.query<NotificationListItem>(query);
-  return result.rows;
+  try {
+    const result = await pool.query<NotificationListItem>(query);
+    return result.rows;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "viewNotifications",
+      error,
+      "DB error while fetching notifications list",
+      query,
+      {}
+    );
+    // Re-throw so controller/middleware can send appropriate HTTP status
+    throw error;
+  }
 }
 
 // Get single notification by ID with all related data
 export async function getNotificationById(
   id: string
 ): Promise<Notification | null> {
-  // Optional backward-compatibility check (kept but not used)
   const columnCheckQuery = `
     SELECT 1
     FROM information_schema.columns
     WHERE table_name = $1
       AND column_name = $2
   `;
-  await pool.query(columnCheckQuery, [
-    ALL_TABLE_NAME.NOTIFICATION,
-    C.IS_ARCHIVED,
-  ]);
   const query = `
     SELECT *
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     WHERE ${C.ID} = $1
     LIMIT 1
   `;
-  const result = await pool.query(query, [id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
+  try {
+    // Optional backward-compatibility check (kept but not used)
+    await pool.query(columnCheckQuery, [
+      ALL_TABLE_NAME.NOTIFICATION,
+      C.IS_ARCHIVED,
+    ]);
+    const result = await pool.query<Notification>(query, [id]);
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getNotificationById",
+      error,
+      "DB error while fetching notification by id",
+      query,
+      { id }
+    );
+    throw error;
+  }
 }
+
 
 // Edit notification with all related tables
 export async function editCompleteNotification(
@@ -231,7 +276,6 @@ export async function editCompleteNotification(
       WHERE id = $37
       RETURNING id;
     `;
-
     const values = [
       data.title,
       data.category,
@@ -286,9 +330,23 @@ export async function editCompleteNotification(
       notificationId: result.rows[0].id,
       message: "Notification updated successfully",
     };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("editCompleteNotification error:", error);
+  } catch (error: unknown) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "ROLLBACK failed in editCompleteNotification:",
+        rollbackError
+      );
+    }
+    logErrorLocation(
+      "notificationService.ts",
+      "editCompleteNotification",
+      error,
+      "DB error while editing notification",
+      "",
+      { id, data }
+    );
     throw error;
   } finally {
     client.release();
@@ -296,7 +354,10 @@ export async function editCompleteNotification(
 }
 
 // Approve notification
-export async function approveNotification(id: string, approvedBy: string) {
+export async function approveNotification(
+  id: string,
+  approvedBy: string
+) {
   const query = `
     UPDATE notifications 
     SET 
@@ -306,9 +367,22 @@ export async function approveNotification(id: string, approvedBy: string) {
     RETURNING *;
   `;
   const values = [approvedBy, id];
-  const result = await pool.query(query, values);
-  return result.rows[0] || null;
+  try {
+    const result = await pool.query<Notification>(query, values);
+    return result.rows[0] || null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "approveNotification",
+      error,
+      "DB error while approving notification",
+      query,
+      { id, approvedBy }
+    );
+    throw error;
+  }
 }
+
 
 // Archive notification (soft delete)
 export async function archiveNotification(id: string) {
@@ -319,9 +393,22 @@ export async function archiveNotification(id: string) {
     WHERE ${C.ID} = $1
     RETURNING *;
   `;
-  const result = await pool.query(query, [id]);
-  return result.rows[0] || null;
+  try {
+    const result = await pool.query<Notification>(query, [id]);
+    return result.rows[0] || null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "archiveNotification",
+      error,
+      "DB error while archiving notification",
+      query,
+      { id }
+    );
+    throw error;
+  }
 }
+
 
 // Unarchive notification
 export async function unarchiveNotification(id: string) {
@@ -332,10 +419,24 @@ export async function unarchiveNotification(id: string) {
     WHERE ${C.ID} = $1
     RETURNING *;
   `;
-  const result = await pool.query(query, [id]);
-  return result.rows[0] || null;
+  try {
+    const result = await pool.query<Notification>(query, [id]);
+    return result.rows[0] || null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "unarchiveNotification",
+      error,
+      "DB error while unarchiving notification",
+      query,
+      { id }
+    );
+    throw error;
+  }
 }
 
+// Fetch notifications for home page, filtered to approved (and non-archived when column exists),
+// then group them by category for sections like Jobs, Results
 export async function getHomePageNotifications(): Promise<
   Record<string, Array<{ name: string; notification_id: string }>>
 > {
@@ -361,34 +462,47 @@ export async function getHomePageNotifications(): Promise<
     ${whereClause}
     ORDER BY ${C.CREATED_AT} DESC
   `;
-  const result = await pool.query(query);
-  // 3) Group notifications by category
-  const grouped: Record<
-    string,
-    Array<{ name: string; notification_id: string }>
-  > = {};
-  for (const n of result.rows) {
-    const category = n.category || "Uncategorized";
-    if (!grouped[category]) grouped[category] = [];
-    grouped[category].push({
-      name: n.title,
-      notification_id: n.id.toString(),
-    });
+  try {
+    const result = await pool.query(query);
+    // 3) Group notifications by category
+    const grouped: Record<
+      string,
+      Array<{ name: string; notification_id: string }>
+    > = {};
+    for (const n of result.rows) {
+      const category = n.category || "Uncategorized";
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push({
+        name: n.title,
+        notification_id: n.id.toString(),
+      });
+    }
+    return grouped;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getHomePageNotifications",
+      error,
+      "DB error while fetching home page notifications",
+      query,
+      {}
+    );
+    throw error;
   }
-  return grouped;
 }
 
-// Get notifications by category
+
+// List notifications by category with pagination and optional search,
+// always returning only approved and non-archived records plus total count/hasMore.
 export async function getNotificationsByCategory(
   category: string,
   page: number,
   limit: number,
   searchValue?: string
 ): Promise<NotificationListResponse> {
-  console.log('category', category, 'page', page, 'limit', limit, 'searchValue', searchValue);
   const offset = (page - 1) * limit;
   const whereClauses: string[] = [
-    `${C.IS_ARCHIVED} = FALSE`, // is_archived = FALSE
+    `${C.IS_ARCHIVED} = FALSE`,
     `${C.APPROVED_AT} IS NOT NULL`,
   ];
   const params: any[] = [];
@@ -398,11 +512,7 @@ export async function getNotificationsByCategory(
     params.push(category);
   }
   // Search filter
-  if (
-    searchValue &&
-    typeof searchValue === "string" &&
-    searchValue.trim() !== ""
-  ) {
+  if (searchValue && typeof searchValue === "string" && searchValue.trim() !== "") {
     const likeParam1 = `$${params.length + 1}`;
     const likeParam2 = `$${params.length + 2}`;
     whereClauses.push(
@@ -411,43 +521,50 @@ export async function getNotificationsByCategory(
     const pattern = `%${searchValue.toLowerCase()}%`;
     params.push(pattern, pattern);
   }
-  const where = whereClauses.length
-    ? `WHERE ${whereClauses.join(" AND ")}`
-    : "";
-  console.log('where', where);
+  const where = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
   // Add LIMIT and OFFSET as final params
-  params.push(limit); // last-1
-  params.push(offset); // last
-  const limitIdx = params.length - 2; // index for LIMIT value in params
-  const offsetIdx = params.length - 1; // index for OFFSET value in params
+  const limitParamIdx = params.length + 1;
+  const offsetParamIdx = params.length + 2;
+  params.push(limit, offset);
   const notificationsSql = `
     SELECT ${C.ID}, ${C.TITLE}
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
     ORDER BY ${C.CREATED_AT} DESC
-    LIMIT $${limitIdx + 1} OFFSET $${offsetIdx + 1}
+    LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}
   `;
-  console.log('notificationsSql', notificationsSql);
   // Count query (no limit/offset)
   const countSql = `
     SELECT COUNT(*) AS total
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
   `;
-  console.log("countSql", countSql);
-  const countParams = params.slice(0, params.length - 2);
-  const result = await pool.query<NotificationRow>(notificationsSql, params);
-  const countResult = await pool.query<{ total: string }>(
-    countSql,
-    countParams
-  );
-  console.log('result', result);
-  const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
-  const rowCount = result.rowCount ?? 0;
-  const hasMore = offset + rowCount < total;
-  const data = result.rows.map((row) => ({
-    name: row.title,
-    notification_id: String(row.id),
-  }));
-  return { data, total, page, hasMore };
+  const countParams = params.slice(0, -2);
+  try {
+    const result = await pool.query<NotificationRow>(notificationsSql, params);
+    const countResult = await pool.query<{ total: string }>(
+      countSql,
+      countParams
+    );
+    const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
+    const rowCount = result.rowCount ?? 0;
+    const hasMore = offset + rowCount < total;
+
+    const data = result.rows.map((row) => ({
+      name: row.title,
+      notification_id: String(row.id),
+    }));
+    return { data, total, page, hasMore };
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getNotificationsByCategory",
+      error,
+      "DB error while fetching notifications by category",
+      { notificationsSql, countSql } as any,
+      { category, page, limit, searchValue }
+    );
+    throw error;
+  }
 }
+
