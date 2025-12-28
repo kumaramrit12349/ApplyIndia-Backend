@@ -22,9 +22,9 @@ export async function addCompleteNotification(data: NotificationForm) {
         ${C.SHORT_DESCRIPTION},
         ${C.LONG_DESCRIPTION},
 
-        ${C.IS_ADMIT_CARD_PUBLISHED},
-        ${C.IS_RESULT_PUBLISHED},
-        ${C.IS_ANSWER_KEY_PUBLISHED},
+        ${C.HAS_ADMIT_CARD},
+        ${C.HAS_RESULT},
+        ${C.HAS_ANSWER_KEY},
 
         ${C.START_DATE},
         ${C.LAST_DATE_TO_APPLY},
@@ -79,9 +79,9 @@ export async function addCompleteNotification(data: NotificationForm) {
       data.short_description,
       data.long_description,
 
-      data.is_admit_card_published,
-      data.is_result_published,
-      data.is_answer_key_published,
+      data.has_admit_card,
+      data.has_result,
+      data.has_answer_key,
 
       data.start_date,
       data.last_date_to_apply,
@@ -192,9 +192,9 @@ export async function editCompleteNotification(
         ${C.SHORT_DESCRIPTION} = $5,
         ${C.LONG_DESCRIPTION} = $6,
 
-        ${C.IS_ADMIT_CARD_PUBLISHED} = $7,
-        ${C.IS_RESULT_PUBLISHED} = $8,
-        ${C.IS_ANSWER_KEY_PUBLISHED} = $9,
+        ${C.HAS_ADMIT_CARD} = $7,
+        ${C.HAS_RESULT} = $8,
+        ${C.HAS_ANSWER_KEY} = $9,
 
         ${C.START_DATE} = $10,
         ${C.LAST_DATE_TO_APPLY} = $11,
@@ -241,9 +241,9 @@ export async function editCompleteNotification(
       data.short_description,
       data.long_description,
 
-      data.is_admit_card_published,
-      data.is_result_published,
-      data.is_answer_key_published,
+      data.has_admit_card,
+      data.has_result,
+      data.has_answer_key,
 
       data.start_date,
       data.last_date_to_apply,
@@ -385,6 +385,7 @@ export async function getNotificationsByCategory(
   limit: number,
   searchValue?: string
 ): Promise<NotificationListResponse> {
+  console.log('category', category, 'page', page, 'limit', limit, 'searchValue', searchValue);
   const offset = (page - 1) * limit;
   const whereClauses: string[] = [
     `${C.IS_ARCHIVED} = FALSE`, // is_archived = FALSE
@@ -413,6 +414,7 @@ export async function getNotificationsByCategory(
   const where = whereClauses.length
     ? `WHERE ${whereClauses.join(" AND ")}`
     : "";
+  console.log('where', where);
   // Add LIMIT and OFFSET as final params
   params.push(limit); // last-1
   params.push(offset); // last
@@ -425,18 +427,21 @@ export async function getNotificationsByCategory(
     ORDER BY ${C.CREATED_AT} DESC
     LIMIT $${limitIdx + 1} OFFSET $${offsetIdx + 1}
   `;
+  console.log('notificationsSql', notificationsSql);
   // Count query (no limit/offset)
   const countSql = `
     SELECT COUNT(*) AS total
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
   `;
+  console.log("countSql", countSql);
   const countParams = params.slice(0, params.length - 2);
   const result = await pool.query<NotificationRow>(notificationsSql, params);
   const countResult = await pool.query<{ total: string }>(
     countSql,
     countParams
   );
+  console.log('result', result);
   const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
   const rowCount = result.rowCount ?? 0;
   const hasMore = offset + rowCount < total;

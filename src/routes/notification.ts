@@ -99,7 +99,7 @@ router.patch("/unarchive/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// Group notifications by category for the HomePage (PUBLIC)
+// Group notifications for the HomePage (PUBLIC)
 router.get("/home", async (req, res) => {
   try {
     const grouped = await getHomePageNotifications();
