@@ -9,7 +9,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/DevOps-Fusion/zulip-code.git'
+                git branch: 'main', url: 'https://github.com/kumaramrit12349/RegularApplication-Backend.git'
             }
         }
 
