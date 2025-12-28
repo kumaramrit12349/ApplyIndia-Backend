@@ -438,7 +438,7 @@ export async function unarchiveNotification(id: string) {
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
 export async function getHomePageNotifications(): Promise<
-  Record<string, Array<{ name: string; notification_id: string }>>
+  Record<string, Array<{ title: string; id: string }>>
 > {
   // 1) Check if `is_archived` column exists (backward compatibility)
   const columnCheckResult = await pool.query(
@@ -467,14 +467,14 @@ export async function getHomePageNotifications(): Promise<
     // 3) Group notifications by category
     const grouped: Record<
       string,
-      Array<{ name: string; notification_id: string }>
+      Array<{ title: string; id: string }>
     > = {};
     for (const n of result.rows) {
       const category = n.category || "Uncategorized";
       if (!grouped[category]) grouped[category] = [];
       grouped[category].push({
-        name: n.title,
-        notification_id: n.id.toString(),
+        title: n.title,
+        id: n.id.toString(),
       });
     }
     return grouped;
@@ -551,8 +551,8 @@ export async function getNotificationsByCategory(
     const hasMore = offset + rowCount < total;
 
     const data = result.rows.map((row) => ({
-      name: row.title,
-      notification_id: String(row.id),
+      title: row.title,
+      id: String(row.id),
     }));
     return { data, total, page, hasMore };
   } catch (error: unknown) {

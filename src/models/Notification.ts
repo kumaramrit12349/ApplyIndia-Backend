@@ -12,7 +12,7 @@ export interface NotificationRow {
 }
 
 export interface NotificationListResponse {
-  data: Array<{ name: string; notification_id: string }>;
+  data: Array<{ title: string; id: string }>;
   total: number;
   page: number;
   hasMore: boolean;
