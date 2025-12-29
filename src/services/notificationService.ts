@@ -5,7 +5,10 @@ import {
   NotificationListResponse,
   NotificationRow,
 } from "../models/Notification";
-import { NOTIFICATION_COLUMNS as C } from "../constant/Notification";
+import {
+  NOTIFICATION_COLUMNS as C,
+  NOTIFICATION_COLUMNS,
+} from "../constant/Notification";
 import {
   ALL_TABLE_NAME,
   NOTIFICATION_CATEGORIES,
@@ -186,8 +189,7 @@ export async function viewNotifications(): Promise<NotificationListItem[]> {
 // Get single notification by ID with all related data
 export async function getNotificationBySlug(
   slug: string
-): Promise<Notification | null> {
-  console.log('slug', slug);
+): Promise<NotificationRow | null> {
   const columnCheckQuery = `
     SELECT 1
     FROM information_schema.columns
@@ -206,7 +208,7 @@ export async function getNotificationBySlug(
       ALL_TABLE_NAME.NOTIFICATION,
       C.IS_ARCHIVED,
     ]);
-    const result = await pool.query<Notification>(query, [slug]);
+    const result = await pool.query<NotificationRow>(query, [slug]);
     return result.rows.length > 0 ? result.rows[0] : null;
   } catch (error: unknown) {
     logErrorLocation(
@@ -225,7 +227,6 @@ export async function getNotificationBySlug(
 export async function getNotificationById(
   id: string
 ): Promise<Notification | null> {
-  console.log('id', id);
   const columnCheckQuery = `
     SELECT 1
     FROM information_schema.columns
@@ -446,7 +447,6 @@ export async function archiveNotification(id: string) {
   }
 }
 
-
 // Unarchive notification
 export async function unarchiveNotification(id: string) {
   const query = `
@@ -530,7 +530,7 @@ export async function getHomePageNotifications(): Promise<
           grouped[NOTIFICATION_CATEGORIES.SYLLABUS] = [];
         grouped[NOTIFICATION_CATEGORIES.SYLLABUS].push({
           title: n.title,
-          slug: n.slug
+          slug: n.slug,
         });
       }
 
@@ -580,10 +580,25 @@ export async function getNotificationsByCategory(
     `${C.APPROVED_AT} IS NOT NULL`,
   ];
   const params: any[] = [];
-  // Category filter (skip "all")
-  if (category && category.toLowerCase() !== "all") {
-    whereClauses.push(`${C.CATEGORY} = $${params.length + 1}`);
-    params.push(category);
+  // Normalize category once
+  const normalizedCategory = category?.toLowerCase() || "all";
+  // Special category handling
+  const specialCategoryFlags: Record<string, string> = {
+    [NOTIFICATION_CATEGORIES.ADMIT_CARD]: NOTIFICATION_COLUMNS.HAS_ADMIT_CARD,
+    [NOTIFICATION_CATEGORIES.SYLLABUS]: NOTIFICATION_COLUMNS.HAS_SYLLABUS,
+    [NOTIFICATION_CATEGORIES.ANSWER_KEY]: NOTIFICATION_COLUMNS.HAS_ANSWER_KEY,
+    [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION_COLUMNS.HAS_RESULT,
+  };
+  if (normalizedCategory !== "all") {
+    const flagColumn = specialCategoryFlags[normalizedCategory];
+    if (flagColumn) {
+      // For admit-card/syllabus/answer-key/result use boolean flag
+      whereClauses.push(`${flagColumn} = TRUE`);
+    } else {
+      // For all other categories use category column
+      whereClauses.push(`${C.CATEGORY} = $${params.length + 1}`);
+      params.push(category);
+    }
   }
   // Search filter
   if (
@@ -607,7 +622,7 @@ export async function getNotificationsByCategory(
   const offsetParamIdx = params.length + 2;
   params.push(limit, offset);
   const notificationsSql = `
-    SELECT ${C.ID}, ${C.TITLE}
+    SELECT ${C.SLUG}, ${C.TITLE}
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
     ORDER BY ${C.CREATED_AT} DESC
@@ -632,7 +647,7 @@ export async function getNotificationsByCategory(
 
     const data = result.rows.map((row) => ({
       title: row.title,
-      id: String(row.id),
+      slug: row.slug,
     }));
     return { data, total, page, hasMore };
   } catch (error: unknown) {
@@ -647,4 +662,3 @@ export async function getNotificationsByCategory(
     throw error;
   }
 }
-

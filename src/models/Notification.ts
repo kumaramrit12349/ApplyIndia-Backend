@@ -1,18 +1,15 @@
 export interface Notification {
-  id: number;
-  userId: number;
+  id: string;
   title: string;
-  message: string;
-  createdAt: Date;
 }
 
 export interface NotificationRow {
-  id: number;
+  slug: string;
   title: string;
 }
 
 export interface NotificationListResponse {
-  data: Array<{ title: string; id: string }>;
+  data: Array<{ title: string; slug: string }>;
   total: number;
   page: number;
   hasMore: boolean;
