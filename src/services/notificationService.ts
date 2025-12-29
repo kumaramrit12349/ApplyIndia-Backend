@@ -6,7 +6,10 @@ import {
   NotificationRow,
 } from "../models/Notification";
 import { NOTIFICATION_COLUMNS as C } from "../constant/Notification";
-import { ALL_TABLE_NAME } from "../constant/sharedConstant";
+import {
+  ALL_TABLE_NAME,
+  NOTIFICATION_CATEGORIES,
+} from "../constant/sharedConstant";
 import { logErrorLocation } from "../utils/errorUtils";
 
 // Add complete notification with all related tables
@@ -181,9 +184,48 @@ export async function viewNotifications(): Promise<NotificationListItem[]> {
 }
 
 // Get single notification by ID with all related data
+export async function getNotificationBySlug(
+  slug: string
+): Promise<Notification | null> {
+  console.log('slug', slug);
+  const columnCheckQuery = `
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = $1
+      AND column_name = $2
+  `;
+  const query = `
+    SELECT *
+    FROM ${ALL_TABLE_NAME.NOTIFICATION}
+    WHERE ${C.SLUG} = $1
+    LIMIT 1
+  `;
+  try {
+    // Optional backward-compatibility check (kept but not used)
+    await pool.query(columnCheckQuery, [
+      ALL_TABLE_NAME.NOTIFICATION,
+      C.IS_ARCHIVED,
+    ]);
+    const result = await pool.query<Notification>(query, [slug]);
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getNotificationById",
+      error,
+      "DB error while fetching notification by id",
+      query,
+      { slug }
+    );
+    throw error;
+  }
+}
+
+// Get single notification by ID with all related data
 export async function getNotificationById(
   id: string
 ): Promise<Notification | null> {
+  console.log('id', id);
   const columnCheckQuery = `
     SELECT 1
     FROM information_schema.columns
@@ -216,7 +258,6 @@ export async function getNotificationById(
     throw error;
   }
 }
-
 
 // Edit notification with all related tables
 export async function editCompleteNotification(
@@ -354,10 +395,7 @@ export async function editCompleteNotification(
 }
 
 // Approve notification
-export async function approveNotification(
-  id: string,
-  approvedBy: string
-) {
+export async function approveNotification(id: string, approvedBy: string) {
   const query = `
     UPDATE notifications 
     SET 
@@ -382,7 +420,6 @@ export async function approveNotification(
     throw error;
   }
 }
-
 
 // Archive notification (soft delete)
 export async function archiveNotification(id: string) {
@@ -438,7 +475,7 @@ export async function unarchiveNotification(id: string) {
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
 export async function getHomePageNotifications(): Promise<
-  Record<string, Array<{ title: string; id: string }>>
+  Record<string, Array<{ title: string; slug: string }>>
 > {
   // 1) Check if `is_archived` column exists (backward compatibility)
   const columnCheckResult = await pool.query(
@@ -457,7 +494,7 @@ export async function getHomePageNotifications(): Promise<
     ? `WHERE ${C.IS_ARCHIVED} = FALSE AND approved_at IS NOT NULL`
     : `WHERE approved_at IS NOT NULL`;
   const query = `
-    SELECT ${C.ID} AS id, ${C.TITLE} AS title, ${C.CATEGORY} AS category
+    SELECT ${C.TITLE}, ${C.SLUG}, ${C.HAS_SYLLABUS}, ${C.HAS_ADMIT_CARD}, ${C.HAS_ANSWER_KEY}, ${C.HAS_RESULT}, ${C.CATEGORY} AS category
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${whereClause}
     ORDER BY ${C.CREATED_AT} DESC
@@ -465,17 +502,55 @@ export async function getHomePageNotifications(): Promise<
   try {
     const result = await pool.query(query);
     // 3) Group notifications by category
-    const grouped: Record<
-      string,
-      Array<{ title: string; id: string }>
-    > = {};
+    const grouped: Record<string, Array<{ title: string; slug: string }>> = {};
+    // Group notifications by primary category first, then create additional groups for notifications
+    // with specific flags (has_admit_card → "admit-card", has_syllabus → "syllabus", etc.) [web:188]
     for (const n of result.rows) {
-      const category = n.category || "Uncategorized";
+      const category = n?.category || "Uncategorized";
+
+      // 1. Always add to primary category
       if (!grouped[category]) grouped[category] = [];
       grouped[category].push({
         title: n.title,
-        id: n.id.toString(),
+        slug: n.slug,
       });
+
+      // 2. Add to special categories if flags are true
+      if (n.has_admit_card) {
+        if (!grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD])
+          grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD] = [];
+        grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD].push({
+          title: n.title,
+          slug: n.slug,
+        });
+      }
+
+      if (n.has_syllabus) {
+        if (!grouped[NOTIFICATION_CATEGORIES.SYLLABUS])
+          grouped[NOTIFICATION_CATEGORIES.SYLLABUS] = [];
+        grouped[NOTIFICATION_CATEGORIES.SYLLABUS].push({
+          title: n.title,
+          slug: n.slug
+        });
+      }
+
+      if (n.has_answer_key) {
+        if (!grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY])
+          grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY] = [];
+        grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY].push({
+          title: n.title,
+          slug: n.slug,
+        });
+      }
+
+      if (n.has_result) {
+        if (!grouped[NOTIFICATION_CATEGORIES.RESULT])
+          grouped[NOTIFICATION_CATEGORIES.RESULT] = [];
+        grouped[NOTIFICATION_CATEGORIES.RESULT].push({
+          title: n.title,
+          slug: n.slug,
+        });
+      }
     }
     return grouped;
   } catch (error: unknown) {
@@ -490,7 +565,6 @@ export async function getHomePageNotifications(): Promise<
     throw error;
   }
 }
-
 
 // List notifications by category with pagination and optional search,
 // always returning only approved and non-archived records plus total count/hasMore.
@@ -512,7 +586,11 @@ export async function getNotificationsByCategory(
     params.push(category);
   }
   // Search filter
-  if (searchValue && typeof searchValue === "string" && searchValue.trim() !== "") {
+  if (
+    searchValue &&
+    typeof searchValue === "string" &&
+    searchValue.trim() !== ""
+  ) {
     const likeParam1 = `$${params.length + 1}`;
     const likeParam2 = `$${params.length + 2}`;
     whereClauses.push(
@@ -521,7 +599,9 @@ export async function getNotificationsByCategory(
     const pattern = `%${searchValue.toLowerCase()}%`;
     params.push(pattern, pattern);
   }
-  const where = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+  const where = whereClauses.length
+    ? `WHERE ${whereClauses.join(" AND ")}`
+    : "";
   // Add LIMIT and OFFSET as final params
   const limitParamIdx = params.length + 1;
   const offsetParamIdx = params.length + 2;

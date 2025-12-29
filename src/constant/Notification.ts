@@ -8,6 +8,7 @@ export const NOTIFICATION_COLUMNS = {
   SHORT_DESCRIPTION: "short_description",
   LONG_DESCRIPTION: "long_description",
 
+  HAS_SYLLABUS: "has_syllabus",
   HAS_ADMIT_CARD: "has_admit_card",
   HAS_RESULT: "has_result",
   HAS_ANSWER_KEY: "has_answer_key",
@@ -43,6 +44,8 @@ export const NOTIFICATION_COLUMNS = {
   ANSWER_KEY_URL: "answer_key_url",
   RESULT_URL: "result_url",
   OTHER_LINKS: "other_links",
+
+  SLUG: "slug",
 
   APPROVED_BY: "approved_by",
   APPROVED_AT: "approved_at",
