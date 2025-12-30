@@ -3,13 +3,13 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        IMAGE_NAME = "prabhat2025/Backend"
+        IMAGE_NAME = "prabhat2025/backend"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/kumaramrit12349/RegularApplication-Backend.git'
+                git branch: 'devAWS', url: 'https://github.com/kumaramrit12349/RegularApplication-Backend.git'
             }
         }
 
