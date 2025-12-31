@@ -13,9 +13,9 @@ export interface NotificationForm extends BaseInterface {
   short_description: string; // HTML from editor
   long_description: string; // HTML from editor
 
-  is_admit_card_published: boolean;
-  is_result_published: boolean;
-  is_answer_key_published: boolean;
+  has_admit_card: boolean;
+  has_result: boolean;
+  has_answer_key: boolean;
 
   // Important dates
   start_date: string; // ISO date string (yyyy-mm-dd)

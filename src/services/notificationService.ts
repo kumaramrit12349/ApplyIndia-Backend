@@ -5,8 +5,15 @@ import {
   NotificationListResponse,
   NotificationRow,
 } from "../models/Notification";
-import { NOTIFICATION_COLUMNS as C } from "../constant/Notification";
-import { ALL_TABLE_NAME } from "../constant/sharedConstant";
+import {
+  NOTIFICATION_COLUMNS as C,
+  NOTIFICATION_COLUMNS,
+} from "../constant/Notification";
+import {
+  ALL_TABLE_NAME,
+  NOTIFICATION_CATEGORIES,
+} from "../constant/sharedConstant";
+import { logErrorLocation } from "../utils/errorUtils";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: NotificationForm) {
@@ -22,9 +29,9 @@ export async function addCompleteNotification(data: NotificationForm) {
         ${C.SHORT_DESCRIPTION},
         ${C.LONG_DESCRIPTION},
 
-        ${C.IS_ADMIT_CARD_PUBLISHED},
-        ${C.IS_RESULT_PUBLISHED},
-        ${C.IS_ANSWER_KEY_PUBLISHED},
+        ${C.HAS_ADMIT_CARD},
+        ${C.HAS_RESULT},
+        ${C.HAS_ANSWER_KEY},
 
         ${C.START_DATE},
         ${C.LAST_DATE_TO_APPLY},
@@ -79,9 +86,9 @@ export async function addCompleteNotification(data: NotificationForm) {
       data.short_description,
       data.long_description,
 
-      data.is_admit_card_published,
-      data.is_result_published,
-      data.is_answer_key_published,
+      data.has_admit_card,
+      data.has_result,
+      data.has_answer_key,
 
       data.start_date,
       data.last_date_to_apply,
@@ -122,9 +129,27 @@ export async function addCompleteNotification(data: NotificationForm) {
       notificationId: result.rows[0].id,
       message: "Notification created successfully",
     };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("addCompleteNotification error:", error);
+  } catch (error: unknown) {
+    // rollback best-effort; ignore rollback failure but still log root error
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "ROLLBACK failed in addCompleteNotification:",
+        rollbackError
+      );
+    }
+
+    logErrorLocation(
+      "notificationService.ts",
+      "addCompleteNotification",
+      error,
+      "DB error while creating notification",
+      "",
+      { data }
+    );
+
+    // let upper layer decide HTTP response (e.g., 500)
     throw error;
   } finally {
     client.release();
@@ -144,33 +169,95 @@ export async function viewNotifications(): Promise<NotificationListItem[]> {
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ORDER BY ${C.CREATED_AT} DESC
   `;
-  const result = await pool.query<NotificationListItem>(query);
-  return result.rows;
+  try {
+    const result = await pool.query<NotificationListItem>(query);
+    return result.rows;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "viewNotifications",
+      error,
+      "DB error while fetching notifications list",
+      query,
+      {}
+    );
+    // Re-throw so controller/middleware can send appropriate HTTP status
+    throw error;
+  }
 }
 
 // Get single notification by ID with all related data
-export async function getNotificationById(
-  id: string
-): Promise<Notification | null> {
-  // Optional backward-compatibility check (kept but not used)
+export async function getNotificationBySlug(
+  slug: string
+): Promise<NotificationRow | null> {
   const columnCheckQuery = `
     SELECT 1
     FROM information_schema.columns
     WHERE table_name = $1
       AND column_name = $2
   `;
-  await pool.query(columnCheckQuery, [
-    ALL_TABLE_NAME.NOTIFICATION,
-    C.IS_ARCHIVED,
-  ]);
+  const query = `
+    SELECT *
+    FROM ${ALL_TABLE_NAME.NOTIFICATION}
+    WHERE ${C.SLUG} = $1
+    LIMIT 1
+  `;
+  try {
+    // Optional backward-compatibility check (kept but not used)
+    await pool.query(columnCheckQuery, [
+      ALL_TABLE_NAME.NOTIFICATION,
+      C.IS_ARCHIVED,
+    ]);
+    const result = await pool.query<NotificationRow>(query, [slug]);
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getNotificationById",
+      error,
+      "DB error while fetching notification by id",
+      query,
+      { slug }
+    );
+    throw error;
+  }
+}
+
+// Get single notification by ID with all related data
+export async function getNotificationById(
+  id: string
+): Promise<Notification | null> {
+  const columnCheckQuery = `
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = $1
+      AND column_name = $2
+  `;
   const query = `
     SELECT *
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     WHERE ${C.ID} = $1
     LIMIT 1
   `;
-  const result = await pool.query(query, [id]);
-  return result.rows.length > 0 ? result.rows[0] : null;
+  try {
+    // Optional backward-compatibility check (kept but not used)
+    await pool.query(columnCheckQuery, [
+      ALL_TABLE_NAME.NOTIFICATION,
+      C.IS_ARCHIVED,
+    ]);
+    const result = await pool.query<Notification>(query, [id]);
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getNotificationById",
+      error,
+      "DB error while fetching notification by id",
+      query,
+      { id }
+    );
+    throw error;
+  }
 }
 
 // Edit notification with all related tables
@@ -192,9 +279,9 @@ export async function editCompleteNotification(
         ${C.SHORT_DESCRIPTION} = $5,
         ${C.LONG_DESCRIPTION} = $6,
 
-        ${C.IS_ADMIT_CARD_PUBLISHED} = $7,
-        ${C.IS_RESULT_PUBLISHED} = $8,
-        ${C.IS_ANSWER_KEY_PUBLISHED} = $9,
+        ${C.HAS_ADMIT_CARD} = $7,
+        ${C.HAS_RESULT} = $8,
+        ${C.HAS_ANSWER_KEY} = $9,
 
         ${C.START_DATE} = $10,
         ${C.LAST_DATE_TO_APPLY} = $11,
@@ -231,7 +318,6 @@ export async function editCompleteNotification(
       WHERE id = $37
       RETURNING id;
     `;
-
     const values = [
       data.title,
       data.category,
@@ -241,9 +327,9 @@ export async function editCompleteNotification(
       data.short_description,
       data.long_description,
 
-      data.is_admit_card_published,
-      data.is_result_published,
-      data.is_answer_key_published,
+      data.has_admit_card,
+      data.has_result,
+      data.has_answer_key,
 
       data.start_date,
       data.last_date_to_apply,
@@ -286,9 +372,23 @@ export async function editCompleteNotification(
       notificationId: result.rows[0].id,
       message: "Notification updated successfully",
     };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    console.error("editCompleteNotification error:", error);
+  } catch (error: unknown) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "ROLLBACK failed in editCompleteNotification:",
+        rollbackError
+      );
+    }
+    logErrorLocation(
+      "notificationService.ts",
+      "editCompleteNotification",
+      error,
+      "DB error while editing notification",
+      "",
+      { id, data }
+    );
     throw error;
   } finally {
     client.release();
@@ -306,8 +406,20 @@ export async function approveNotification(id: string, approvedBy: string) {
     RETURNING *;
   `;
   const values = [approvedBy, id];
-  const result = await pool.query(query, values);
-  return result.rows[0] || null;
+  try {
+    const result = await pool.query<Notification>(query, values);
+    return result.rows[0] || null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "approveNotification",
+      error,
+      "DB error while approving notification",
+      query,
+      { id, approvedBy }
+    );
+    throw error;
+  }
 }
 
 // Archive notification (soft delete)
@@ -319,8 +431,20 @@ export async function archiveNotification(id: string) {
     WHERE ${C.ID} = $1
     RETURNING *;
   `;
-  const result = await pool.query(query, [id]);
-  return result.rows[0] || null;
+  try {
+    const result = await pool.query<Notification>(query, [id]);
+    return result.rows[0] || null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "archiveNotification",
+      error,
+      "DB error while archiving notification",
+      query,
+      { id }
+    );
+    throw error;
+  }
 }
 
 // Unarchive notification
@@ -332,12 +456,26 @@ export async function unarchiveNotification(id: string) {
     WHERE ${C.ID} = $1
     RETURNING *;
   `;
-  const result = await pool.query(query, [id]);
-  return result.rows[0] || null;
+  try {
+    const result = await pool.query<Notification>(query, [id]);
+    return result.rows[0] || null;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "unarchiveNotification",
+      error,
+      "DB error while unarchiving notification",
+      query,
+      { id }
+    );
+    throw error;
+  }
 }
 
+// Fetch notifications for home page, filtered to approved (and non-archived when column exists),
+// then group them by category for sections like Jobs, Results
 export async function getHomePageNotifications(): Promise<
-  Record<string, Array<{ name: string; notification_id: string }>>
+  Record<string, Array<{ title: string; slug: string }>>
 > {
   // 1) Check if `is_archived` column exists (backward compatibility)
   const columnCheckResult = await pool.query(
@@ -356,29 +494,80 @@ export async function getHomePageNotifications(): Promise<
     ? `WHERE ${C.IS_ARCHIVED} = FALSE AND approved_at IS NOT NULL`
     : `WHERE approved_at IS NOT NULL`;
   const query = `
-    SELECT ${C.ID} AS id, ${C.TITLE} AS title, ${C.CATEGORY} AS category
+    SELECT ${C.TITLE}, ${C.SLUG}, ${C.HAS_SYLLABUS}, ${C.HAS_ADMIT_CARD}, ${C.HAS_ANSWER_KEY}, ${C.HAS_RESULT}, ${C.CATEGORY} AS category
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${whereClause}
     ORDER BY ${C.CREATED_AT} DESC
   `;
-  const result = await pool.query(query);
-  // 3) Group notifications by category
-  const grouped: Record<
-    string,
-    Array<{ name: string; notification_id: string }>
-  > = {};
-  for (const n of result.rows) {
-    const category = n.category || "Uncategorized";
-    if (!grouped[category]) grouped[category] = [];
-    grouped[category].push({
-      name: n.title,
-      notification_id: n.id.toString(),
-    });
+  try {
+    const result = await pool.query(query);
+    // 3) Group notifications by category
+    const grouped: Record<string, Array<{ title: string; slug: string }>> = {};
+    // Group notifications by primary category first, then create additional groups for notifications
+    // with specific flags (has_admit_card → "admit-card", has_syllabus → "syllabus", etc.) [web:188]
+    for (const n of result.rows) {
+      const category = n?.category || "Uncategorized";
+
+      // 1. Always add to primary category
+      if (!grouped[category]) grouped[category] = [];
+      grouped[category].push({
+        title: n.title,
+        slug: n.slug,
+      });
+
+      // 2. Add to special categories if flags are true
+      if (n.has_admit_card) {
+        if (!grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD])
+          grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD] = [];
+        grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD].push({
+          title: n.title,
+          slug: n.slug,
+        });
+      }
+
+      if (n.has_syllabus) {
+        if (!grouped[NOTIFICATION_CATEGORIES.SYLLABUS])
+          grouped[NOTIFICATION_CATEGORIES.SYLLABUS] = [];
+        grouped[NOTIFICATION_CATEGORIES.SYLLABUS].push({
+          title: n.title,
+          slug: n.slug,
+        });
+      }
+
+      if (n.has_answer_key) {
+        if (!grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY])
+          grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY] = [];
+        grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY].push({
+          title: n.title,
+          slug: n.slug,
+        });
+      }
+
+      if (n.has_result) {
+        if (!grouped[NOTIFICATION_CATEGORIES.RESULT])
+          grouped[NOTIFICATION_CATEGORIES.RESULT] = [];
+        grouped[NOTIFICATION_CATEGORIES.RESULT].push({
+          title: n.title,
+          slug: n.slug,
+        });
+      }
+    }
+    return grouped;
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getHomePageNotifications",
+      error,
+      "DB error while fetching home page notifications",
+      query,
+      {}
+    );
+    throw error;
   }
-  return grouped;
 }
 
-// Get notifications by category
+// List notifications by category with pagination and optional search,
+// always returning only approved and non-archived records plus total count/hasMore.
 export async function getNotificationsByCategory(
   category: string,
   page: number,
@@ -387,14 +576,29 @@ export async function getNotificationsByCategory(
 ): Promise<NotificationListResponse> {
   const offset = (page - 1) * limit;
   const whereClauses: string[] = [
-    `${C.IS_ARCHIVED} = FALSE`, // is_archived = FALSE
+    `${C.IS_ARCHIVED} = FALSE`,
     `${C.APPROVED_AT} IS NOT NULL`,
   ];
   const params: any[] = [];
-  // Category filter (skip "all")
-  if (category && category.toLowerCase() !== "all") {
-    whereClauses.push(`${C.CATEGORY} = $${params.length + 1}`);
-    params.push(category);
+  // Normalize category once
+  const normalizedCategory = category?.toLowerCase() || "all";
+  // Special category handling
+  const specialCategoryFlags: Record<string, string> = {
+    [NOTIFICATION_CATEGORIES.ADMIT_CARD]: NOTIFICATION_COLUMNS.HAS_ADMIT_CARD,
+    [NOTIFICATION_CATEGORIES.SYLLABUS]: NOTIFICATION_COLUMNS.HAS_SYLLABUS,
+    [NOTIFICATION_CATEGORIES.ANSWER_KEY]: NOTIFICATION_COLUMNS.HAS_ANSWER_KEY,
+    [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION_COLUMNS.HAS_RESULT,
+  };
+  if (normalizedCategory !== "all") {
+    const flagColumn = specialCategoryFlags[normalizedCategory];
+    if (flagColumn) {
+      // For admit-card/syllabus/answer-key/result use boolean flag
+      whereClauses.push(`${flagColumn} = TRUE`);
+    } else {
+      // For all other categories use category column
+      whereClauses.push(`${C.CATEGORY} = $${params.length + 1}`);
+      params.push(category);
+    }
   }
   // Search filter
   if (
@@ -414,16 +618,15 @@ export async function getNotificationsByCategory(
     ? `WHERE ${whereClauses.join(" AND ")}`
     : "";
   // Add LIMIT and OFFSET as final params
-  params.push(limit); // last-1
-  params.push(offset); // last
-  const limitIdx = params.length - 2; // index for LIMIT value in params
-  const offsetIdx = params.length - 1; // index for OFFSET value in params
+  const limitParamIdx = params.length + 1;
+  const offsetParamIdx = params.length + 2;
+  params.push(limit, offset);
   const notificationsSql = `
-    SELECT ${C.ID}, ${C.TITLE}
+    SELECT ${C.SLUG}, ${C.TITLE}
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
     ORDER BY ${C.CREATED_AT} DESC
-    LIMIT $${limitIdx + 1} OFFSET $${offsetIdx + 1}
+    LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}
   `;
   // Count query (no limit/offset)
   const countSql = `
@@ -431,18 +634,31 @@ export async function getNotificationsByCategory(
     FROM ${ALL_TABLE_NAME.NOTIFICATION}
     ${where}
   `;
-  const countParams = params.slice(0, params.length - 2);
-  const result = await pool.query<NotificationRow>(notificationsSql, params);
-  const countResult = await pool.query<{ total: string }>(
-    countSql,
-    countParams
-  );
-  const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
-  const rowCount = result.rowCount ?? 0;
-  const hasMore = offset + rowCount < total;
-  const data = result.rows.map((row) => ({
-    name: row.title,
-    notification_id: String(row.id),
-  }));
-  return { data, total, page, hasMore };
+  const countParams = params.slice(0, -2);
+  try {
+    const result = await pool.query<NotificationRow>(notificationsSql, params);
+    const countResult = await pool.query<{ total: string }>(
+      countSql,
+      countParams
+    );
+    const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
+    const rowCount = result.rowCount ?? 0;
+    const hasMore = offset + rowCount < total;
+
+    const data = result.rows.map((row) => ({
+      title: row.title,
+      slug: row.slug,
+    }));
+    return { data, total, page, hasMore };
+  } catch (error: unknown) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getNotificationsByCategory",
+      error,
+      "DB error while fetching notifications by category",
+      { notificationsSql, countSql } as any,
+      { category, page, limit, searchValue }
+    );
+    throw error;
+  }
 }

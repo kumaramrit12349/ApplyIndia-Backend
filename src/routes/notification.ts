@@ -6,6 +6,7 @@ import {
   editCompleteNotification,
   getHomePageNotifications,
   getNotificationById,
+  getNotificationBySlug,
   getNotificationsByCategory,
   unarchiveNotification,
   viewNotifications,
@@ -39,10 +40,9 @@ router.get("/view", authenticateToken, async (req, res) => {
   }
 });
 
-// Get single notification by ID (for edit/review) (PUBLIC)
-router.get("/getById/:id", async (req, res) => {
+// Get single notification by id (for edit/review)
+router.get("/getById/:id", authenticateToken, async (req, res) => {
   try {
-    console.log("req.params", req.params.id);
     const notification = await getNotificationById(req.params?.id);
     if (!notification) {
       return res.status(404).json({ error: "Notification not found" });
@@ -99,7 +99,7 @@ router.patch("/unarchive/:id", authenticateToken, async (req, res) => {
   }
 });
 
-// Group notifications by category for the HomePage (PUBLIC)
+// Group notifications for the HomePage (PUBLIC)
 router.get("/home", async (req, res) => {
   try {
     const grouped = await getHomePageNotifications();
@@ -108,6 +108,22 @@ router.get("/home", async (req, res) => {
     res.status(500).json({ error: "Database error", details: err });
   }
 });
+
+// Get single notification by title (PUBLIC)
+router.get("/getBySlug/:slug", async (req, res) => {
+  try {
+    const notification = await getNotificationBySlug(req.params?.slug);
+    if (!notification) {
+      return res.status(404).json({ error: "Notification not found" });
+    }
+    res.json({ success: true, notification });
+  } catch (err) {
+    res.status(500).json({ error: "Database error", details: err });
+  }
+});
+
+
+
 
 // Group notifications by category for the HomePage (PUBLIC)
 router.get("/category/:category", async (req, res) => {

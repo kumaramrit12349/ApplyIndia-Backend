@@ -8,9 +8,10 @@ export const NOTIFICATION_COLUMNS = {
   SHORT_DESCRIPTION: "short_description",
   LONG_DESCRIPTION: "long_description",
 
-  IS_ADMIT_CARD_PUBLISHED: "is_admit_card_published",
-  IS_RESULT_PUBLISHED: "is_result_published",
-  IS_ANSWER_KEY_PUBLISHED: "is_answer_key_published",
+  HAS_SYLLABUS: "has_syllabus",
+  HAS_ADMIT_CARD: "has_admit_card",
+  HAS_RESULT: "has_result",
+  HAS_ANSWER_KEY: "has_answer_key",
 
   START_DATE: "start_date",
   LAST_DATE_TO_APPLY: "last_date_to_apply",
@@ -43,6 +44,8 @@ export const NOTIFICATION_COLUMNS = {
   ANSWER_KEY_URL: "answer_key_url",
   RESULT_URL: "result_url",
   OTHER_LINKS: "other_links",
+
+  SLUG: "slug",
 
   APPROVED_BY: "approved_by",
   APPROVED_AT: "approved_at",
