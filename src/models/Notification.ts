@@ -13,4 +13,5 @@ export interface NotificationListResponse {
   total: number;
   page: number;
   hasMore: boolean;
+  lastEvaluatedKey;
 }

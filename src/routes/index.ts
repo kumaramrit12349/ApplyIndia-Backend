@@ -5,7 +5,7 @@ import notificationRouter from "./notification";
 const router = Router();
 
 router.get("/", (_req: Request, res: Response) => {
-  res.json({ message: "Welcome to Regular Application!" });
+  res.json({ message: "Welcome to ApplyIndia!" });
 });
 
 router.use("/auth", authRoutes);

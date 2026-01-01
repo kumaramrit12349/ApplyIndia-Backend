@@ -1,4 +1,4 @@
-export const NOTIFICATION_COLUMNS = {
+export const NOTIFICATION = {
   ID: "id",
   TITLE: "title",
   CATEGORY: "category",

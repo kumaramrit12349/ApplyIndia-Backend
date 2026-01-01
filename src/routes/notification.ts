@@ -130,13 +130,13 @@ router.get("/category/:category", async (req, res) => {
   try {
     const { category } = req.params;
     const { searchValue } = req.query;
-    const page = parseInt(req.query.page as string, 10) || 1;
+    const lastEvaluatedKey = req.query.lastEvaluatedKey as any
     const limit = parseInt(req.query.limit as string, 10) || 20;
 
     const result = await getNotificationsByCategory(
       category,
-      page,
       limit,
+      lastEvaluatedKey,
       typeof searchValue === "string" ? searchValue : undefined
     );
     res.json({ success: true, ...result });

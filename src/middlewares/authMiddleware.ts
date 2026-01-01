@@ -1,9 +1,9 @@
 import jwt from "jsonwebtoken";
 import jwksClient, { SigningKey } from "jwks-rsa";
-import { COGNITO_KEYS } from "../config/env";
+import { COGNITO_CONFIG } from "../config/env";
 
 const client = jwksClient({
-  jwksUri: `https://cognito-idp.${COGNITO_KEYS.AWS_REGION}.amazonaws.com/${COGNITO_KEYS.USER_POOL_ID}/.well-known/jwks.json`,
+  jwksUri: `https://cognito-idp.${COGNITO_CONFIG.REGION}.amazonaws.com/${COGNITO_CONFIG.USER_POOL_ID}/.well-known/jwks.json`,
 });
 
 async function getKey(header: any, callback: any) {
