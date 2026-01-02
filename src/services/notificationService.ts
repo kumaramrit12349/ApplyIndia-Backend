@@ -17,7 +17,11 @@ import {
   NotificationRow,
 } from "../db_schema/Notification/NotificationInterface";
 import { updateDynamoDB } from "../Interpreter/dynamoDB/updateCalls";
-import { DETAIL_NOTIFICATION_FOR_EDIT, HOME_PAGE_NOTIFICATION, NOTIFICATION } from "../db_schema/Notification/NotificationConstant";
+import {
+  DETAIL_VIEW_NOTIFICATION,
+  HOME_PAGE_NOTIFICATION,
+  NOTIFICATION,
+} from "../db_schema/Notification/NotificationConstant";
 import { INVALID_INPUT } from "../db_schema/shared/ErrorMessage";
 
 // Add complete notification with all related tables
@@ -88,7 +92,7 @@ export async function getNotificationById(
     const result = await fetchDynamoDB<INotification>(
       ALL_TABLE_NAME.Notification, // PK = Notification#
       notificationSk,
-      DETAIL_NOTIFICATION_FOR_EDIT
+      DETAIL_VIEW_NOTIFICATION
     );
     return result.length > 0 ? result[0] : null;
   } catch (error) {
@@ -145,9 +149,13 @@ export async function approveNotification(
     const notoficationSk = TABLE_PK_MAPPER.Notification + id;
     const attributesToUpdate = {
       [NOTIFICATION.approved_at]: Date.now(),
-      [NOTIFICATION.approved_by]: approvedBy
-    }
-    await updateDynamoDB(TABLE_PK_MAPPER.Notification, notoficationSk, attributesToUpdate);
+      [NOTIFICATION.approved_by]: approvedBy,
+    };
+    await updateDynamoDB(
+      TABLE_PK_MAPPER.Notification,
+      notoficationSk,
+      attributesToUpdate
+    );
     return attributesToUpdate;
   } catch (error) {
     logErrorLocation(
@@ -163,15 +171,17 @@ export async function approveNotification(
 }
 
 // Archive notification (soft delete)
-export async function archiveNotification(
-  id: string
-): Promise<any | null> {
+export async function archiveNotification(id: string): Promise<any | null> {
   try {
-    const notificationSk= TABLE_PK_MAPPER.Notification + id;
+    const notificationSk = TABLE_PK_MAPPER.Notification + id;
     const attributesToUpdate = {
-      [NOTIFICATION.is_archived]: true
-    }
-    await updateDynamoDB(TABLE_PK_MAPPER.Notification, notificationSk, attributesToUpdate);
+      [NOTIFICATION.is_archived]: true,
+    };
+    await updateDynamoDB(
+      TABLE_PK_MAPPER.Notification,
+      notificationSk,
+      attributesToUpdate
+    );
     return true;
   } catch (error) {
     logErrorLocation(
@@ -187,15 +197,17 @@ export async function archiveNotification(
 }
 
 // Unarchive notification
-export async function unarchiveNotification(
-  id: string
-): Promise<any | null> {
+export async function unarchiveNotification(id: string): Promise<any | null> {
   try {
     const notificationSk = TABLE_PK_MAPPER.Notification + id;
     const attributestoUpdate = {
       [NOTIFICATION.is_archived]: false,
     };
-    await updateDynamoDB(TABLE_PK_MAPPER.Notification, notificationSk, attributestoUpdate);
+    await updateDynamoDB(
+      TABLE_PK_MAPPER.Notification,
+      notificationSk,
+      attributestoUpdate
+    );
     return true;
   } catch (error) {
     logErrorLocation(
@@ -220,13 +232,13 @@ export async function getHomePageNotifications(): Promise<
       ALL_TABLE_NAME.Notification,
       undefined,
       HOME_PAGE_NOTIFICATION,
-     { [NOTIFICATION.approved_by]:"admin" },
+      { [NOTIFICATION.approved_by]: "admin" },
       "(#approved_by=:approved_by)",
-    undefined,
-    false
+      undefined,
+      false
     );
 
-    console.log('notifications', notifications);
+    console.log("notifications", notifications);
 
     // 2️⃣ Sort by created_at DESC (SQL equivalent)
     notifications.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
@@ -354,11 +366,7 @@ export async function getNotificationsByCategory(
       title: string;
       created_at?: number;
       sk: string;
-    }>(
-      TABLE_PK_MAPPER.Notification,
-      limit,
-      lastEvaluatedKey,
-    );
+    }>(TABLE_PK_MAPPER.Notification, limit, lastEvaluatedKey);
 
     // 5️⃣ Sort by created_at DESC (SQL equivalent)
     result.results.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));

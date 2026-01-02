@@ -52,7 +52,7 @@ export const NOTIFICATION = {
   modified_at: "modified_at",
 } as const;
 
-export const DETAIL_NOTIFICATION_FOR_EDIT = [
+export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.title,
   NOTIFICATION.category,
   NOTIFICATION.department,
