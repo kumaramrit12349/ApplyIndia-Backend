@@ -1,5 +1,4 @@
 import { AxiosError } from "axios";
-import { IErrorWithDetails } from "../@types/auth";
 import { BAD_REQUEST, BAD_REQUEST_NAME, INTERNAL_SERVER_ERROR, SERVER_ERROR, TRY_AGAIN } from "../db_schema/shared/ErrorMessage";
 import { ResponseError } from "../db_schema/shared/SharedInterface";
 

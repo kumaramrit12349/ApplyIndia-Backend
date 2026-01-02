@@ -5,19 +5,19 @@ export const ENV = {
 };
 
 export const AWS_CONFIG = {
-  region: process.env.region!,
-  accessKeyId: process.env.accessKeyId!,
-  secretAccessKey: process.env.secretAccessKey!,
+  region: process.env.AWS_REGION!,
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
 };
 
 export const DYNAMODB_CONFIG = {
-  TABLE_NAME: process.env.DYNAMODB_TABLE_NAME!,
+  TABLE_NAME: process.env.DYNAMODB_TABLE_NAME,
 };
 
 export const COGNITO_CONFIG = {
-  USER_POOL_ID: process.env.USER_POOL_ID!,
-  CLIENT_ID: process.env.COGNITO_CLIENT_ID!,
-  REGION: process.env.AWS_REGION!,
+  userPoolId: process.env.COGNITO_USER_POOL_ID!,
+  clientId: process.env.COGNITO_CLIENT_ID!,
+  region: process.env.AWS_REGION!,
 };
 
 // Temporary (until full DynamoDB migration)

@@ -41,68 +41,58 @@ export async function getItemFromDynamoDB(
   }
 }
 
-export async function queryItemsFromDynamoDB<T extends Record<string, any>>(
-  queryParams: QueryCommandInput
+export async function queryItemsFromDynamoDB<T>(
+  queryPrams: QueryCommandInput
 ): Promise<T[]> {
   try {
-    /* ------------------------------------
-     * 1. Ensure optional fields exist
-     * ------------------------------------ */
-    queryParams.ExpressionAttributeValues ??= {};
-    queryParams.ExpressionAttributeNames ??= {};
-    /* ------------------------------------
-     * 2. Add archived filter
-     * ------------------------------------ */
-    if (!queryParams.ExpressionAttributeValues[ARCHIVED.exprssionValue]) {
-      queryParams.ExpressionAttributeValues[ARCHIVED.exprssionValue] =
-        { BOOL: false } as AttributeValue;
-      queryParams.ExpressionAttributeNames[ARCHIVED.exprssionName] =
+    let result: QueryCommandOutput, ExclusiveStartKey;
+    if (!queryPrams?.ExpressionAttributeValues[ARCHIVED.exprssionValue]) {
+      queryPrams.ExpressionAttributeValues[ARCHIVED.exprssionValue] =
+        false as any; // as it is required to marshalled value here but we are marshalling below
+      queryPrams.ExpressionAttributeNames[ARCHIVED.exprssionName] =
         ARCHIVED.is_archived;
     }
-    if (queryParams.FilterExpression) {
-      queryParams.FilterExpression += ARCHIVED.filterExpression;
+    if (queryPrams?.FilterExpression) {
+      queryPrams.FilterExpression += ARCHIVED.filterExpression;
     } else {
-      queryParams.FilterExpression =
-        ARCHIVED.filterExpression.substring(4);
+      queryPrams.FilterExpression = ARCHIVED.filterExpression.substring(4);
     }
-    /* ------------------------------------
-     * 3. Marshall ExpressionAttributeValues
-     * ------------------------------------ */
-    queryParams.ExpressionAttributeValues = marshall(
-      queryParams.ExpressionAttributeValues
+    queryPrams.ExpressionAttributeValues = marshall(
+      queryPrams.ExpressionAttributeValues
     );
-    /* ------------------------------------
-     * 4. Query with pagination
-     * ------------------------------------ */
     const accumulated: T[] = [];
-    let ExclusiveStartKey: Record<string, AttributeValue> | undefined;
     do {
       const params: QueryCommandInput = {
-        ...queryParams,
-        ExclusiveStartKey,
+        ...queryPrams,
+        ExclusiveStartKey: ExclusiveStartKey,
       };
-      const result: QueryCommandOutput =
-        await dynamoDBClient.send(new QueryCommand(params));
-
-      if (result.Items) {
+      // const dynamoDbparam: DynamoDBClientConfig = {
+      //   region: process.env.AWSRegion,
+      //   credentials: {
+      //     accessKeyId: process.env.AWSAccessKeyId,
+      //     secretAccessKey: process.env.AWSSecretAccessKey,
+      //   },
+      // };
+      const dynamoDB = new DynamoDBClient(dynamoDBClient);
+      result = await dynamoDB.send(new QueryCommand(params));
+      ExclusiveStartKey = result.LastEvaluatedKey;
+      if (result?.Items) {
         for (const item of result.Items) {
           accumulated.push(unmarshall(item) as T);
         }
       }
-      ExclusiveStartKey = result.LastEvaluatedKey;
-    } while (ExclusiveStartKey);
+    } while (result?.Items && result?.LastEvaluatedKey);
     return accumulated;
   } catch (error) {
     logErrorLocation(
       "fetchData.ts",
       "queryItemsFromDynamoDB",
       error,
-      "Error while querying items from DynamoDB",
-      "",
-      { queryParams }
+      "Error while query items from DynamoDB",
+      `learnerSK:`,
+      { queryPrams }
     );
     handleErrorsAxios(error, {});
-    return []; // TS safety (unreachable at runtime)
   }
 }
 

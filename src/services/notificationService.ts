@@ -1,26 +1,31 @@
-import { NotificationForm, NotificationListItem } from "../@types/notification";
-import {
-  Notification,
-  NotificationListResponse,
-  NotificationRow,
-} from "../models/Notification";
-
 import { logErrorLocation } from "../utils/errorUtils";
 import { insertDataDynamoDB } from "../Interpreter/dynamoDB/insertCalls";
-import { NOTIFICATION_CATEGORIES, TABLE_PK_MAPPER } from "../db_schema/shared/SharedConstant";
-import { fetchDynamoDB, fetchDynamoDBWithLimit } from "../Interpreter/dynamoDB/fetchCalls";
+import {
+  ALL_TABLE_NAME,
+  NOTIFICATION_CATEGORIES,
+  TABLE_PK_MAPPER,
+} from "../db_schema/shared/SharedConstant";
+import {
+  fetchDynamoDB,
+  fetchDynamoDBWithLimit,
+} from "../Interpreter/dynamoDB/fetchCalls";
+import {
+  INotification,
+  NotificationForm,
+  NotificationListItem,
+  NotificationListResponse,
+  NotificationRow,
+} from "../db_schema/Notification/NotificationInterface";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: NotificationForm) {
   try {
+    console.log("data", data);
     // Insert into DynamoDB using generic method
-    const { pk, sk } = await insertDataDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      {
-        ...data,
-        is_archived: false, // recommended default
-      }
-    );
+    const { pk, sk } = await insertDataDynamoDB(ALL_TABLE_NAME.Notification, {
+      ...data,
+      is_archived: false, // recommended default
+    });
     return {
       success: true,
       notificationId: sk, // DynamoDB SK acts as unique ID
@@ -41,22 +46,14 @@ export async function addCompleteNotification(data: NotificationForm) {
 }
 
 // View all notifications (excluding archived)
-export async function viewNotifications(): Promise<NotificationListItem[]> {
+export async function viewNotifications(): Promise<any> {
   try {
-    const notifications = await fetchDynamoDB<NotificationListItem>(
-      TABLE_PK_MAPPER.Notification,     // table name mapper
-      undefined,                       // no SK → list fetch
-      [
-        "title",
-        "category",
-        "created_at",
-        "is_archived",
-        "approved_at",
-      ],
-      undefined,                       // no key-value filters
-      undefined,                       // no extra filter string
-      false                            // not master table
+    const notifications = await fetchDynamoDB<any>(
+      ALL_TABLE_NAME.Notification, // table name mapper
+      undefined, // no SK → list fetch
+      ["title", "category", "created_at", "is_archived", "approved_at"]
     );
+    console.log('notifications', notifications);
     // Optional: sort by created_at DESC (DynamoDB does not auto-sort)
     return notifications.sort(
       (a, b) => Number(b.created_at) - Number(a.created_at)
@@ -74,7 +71,6 @@ export async function viewNotifications(): Promise<NotificationListItem[]> {
   }
 }
 
-
 // Get single notification by ID with all related data
 export async function getNotificationBySlug(
   slug: string
@@ -82,13 +78,12 @@ export async function getNotificationBySlug(
   try {
     const results = await fetchDynamoDB<NotificationRow>(
       TABLE_PK_MAPPER.Notification, // PK = Notification#
-      undefined,                  // no SK → query list
-      undefined,                  // fetch all attributes
+      undefined, // no SK → query list
+      undefined, // fetch all attributes
       {
-        slug: slug,               // key-value filter
+        slug: slug, // key-value filter
       },
-      "#slug = :slug",            // filter expression
-      false                       // not master table
+      "#slug = :slug" // filter expression
     );
 
     return results.length > 0 ? results[0] : null;
@@ -105,19 +100,17 @@ export async function getNotificationBySlug(
   }
 }
 
-
 // Get single notification by ID with all related data
 export async function getNotificationById(
   id: string
-): Promise<Notification | null> {
+): Promise<INotification | null> {
   try {
-    const result = await fetchDynamoDB<Notification>(
+    const result = await fetchDynamoDB<INotification>(
       TABLE_PK_MAPPER.Notification, // PK = Notification#
-      id,                          // SK = notification id
-      undefined,                   // fetch all attributes
-      undefined,                   // no extra filters
-      undefined,                   // no filter expression
-      false                         // not master table
+      id, // SK = notification id
+      undefined, // fetch all attributes
+      undefined, // no extra filters
+      undefined // no filter expression
     );
 
     return result.length > 0 ? result[0] : null;
@@ -133,7 +126,6 @@ export async function getNotificationById(
     throw error;
   }
 }
-
 
 // Edit notification with all related tables
 export async function editCompleteNotification(
@@ -152,16 +144,15 @@ export async function editCompleteNotification(
     const updatedItem = {
       ...existing,
       ...data,
-      pk: TABLE_PK_MAPPER.Notification,           // preserve PK
-      sk: TABLE_PK_MAPPER.Notification + existing.id,           // preserve SK
-      modified_at: Date.now(),   // update timestamp
+      pk: TABLE_PK_MAPPER.Notification, // preserve PK
+      sk: TABLE_PK_MAPPER.Notification + existing.id, // preserve SK
+      modified_at: Date.now(), // update timestamp
     };
 
     // 3️⃣ Overwrite item in DynamoDB (non-master table)
     const { sk } = await insertDataDynamoDB(
       TABLE_PK_MAPPER.Notification,
-      updatedItem,
-      false // ✅ isMasterTable explicitly set
+      updatedItem
     );
 
     return {
@@ -182,12 +173,11 @@ export async function editCompleteNotification(
   }
 }
 
-
 // Approve notification
 export async function approveNotification(
   id: string,
   approvedBy: string
-): Promise<Notification | null> {
+): Promise<INotification | null> {
   try {
     // 1️⃣ Fetch existing notification
     const existing = await getNotificationById(id);
@@ -205,10 +195,7 @@ export async function approveNotification(
     };
 
     // 3️⃣ Overwrite item in DynamoDB (non-master table)
-    await insertDataDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      updatedItem,
-    );
+    await insertDataDynamoDB(TABLE_PK_MAPPER.Notification, updatedItem);
 
     return updatedItem;
   } catch (error) {
@@ -227,7 +214,7 @@ export async function approveNotification(
 // Archive notification (soft delete)
 export async function archiveNotification(
   id: string
-): Promise<Notification | null> {
+): Promise<INotification | null> {
   try {
     // 1️⃣ Fetch existing notification
     const existing = await getNotificationById(id);
@@ -244,11 +231,7 @@ export async function archiveNotification(
     };
 
     // 3️⃣ Overwrite item in DynamoDB
-    await insertDataDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      updatedItem,
-      false // isMasterTable
-    );
+    await insertDataDynamoDB(TABLE_PK_MAPPER.Notification, updatedItem);
 
     return updatedItem;
   } catch (error) {
@@ -264,11 +247,10 @@ export async function archiveNotification(
   }
 }
 
-
 // Unarchive notification
 export async function unarchiveNotification(
   id: string
-): Promise<Notification | null> {
+): Promise<INotification | null> {
   try {
     // 1️⃣ Fetch existing notification
     const existing = await getNotificationById(id);
@@ -285,10 +267,7 @@ export async function unarchiveNotification(
     };
 
     // 3️⃣ Overwrite item in DynamoDB
-    await insertDataDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      updatedItem,
-    );
+    await insertDataDynamoDB(TABLE_PK_MAPPER.Notification, updatedItem);
 
     return updatedItem;
   } catch (error) {
@@ -303,7 +282,6 @@ export async function unarchiveNotification(
     throw error;
   }
 }
-
 
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
@@ -337,14 +315,11 @@ export async function getHomePageNotifications(): Promise<
         "created_at",
       ],
       undefined,
-      "#approved_at <> :nullVal",
-      false
+      "#approved_at <> :nullVal"
     );
 
     // 2️⃣ Sort by created_at DESC (SQL equivalent)
-    notifications.sort(
-      (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0)
-    );
+    notifications.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
 
     // 3️⃣ Group notifications
     const grouped: Record<string, Array<{ title: string; slug: string }>> = {};
@@ -415,7 +390,6 @@ export async function getHomePageNotifications(): Promise<
   }
 }
 
-
 // List notifications by category with pagination and optional search,
 // always returning only approved and non-archived records plus total count/hasMore.
 export async function getNotificationsByCategory(
@@ -476,13 +450,11 @@ export async function getNotificationsByCategory(
       lastEvaluatedKey,
       ["title", "slug", "created_at"],
       expressionValues,
-      filterExpression,
+      filterExpression
     );
 
     // 5️⃣ Sort by created_at DESC (SQL equivalent)
-    result.results.sort(
-      (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0)
-    );
+    result.results.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
 
     return {
       data: result.results.map((n) => ({

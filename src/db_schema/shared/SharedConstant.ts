@@ -1,7 +1,7 @@
 export const TOATAL_COUNT = "totalCount";
 
 export const ALL_TABLE_NAME = {
-  NOTIFICATION: "notifications",
+  Notification: "Notification",
 };
 
 export const NOTIFICATION_CATEGORIES = {

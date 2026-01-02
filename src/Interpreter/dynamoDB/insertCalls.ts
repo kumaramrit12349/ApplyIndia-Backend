@@ -4,7 +4,6 @@ import { handleErrorsAxios, logErrorLocation } from "../../utils/errorUtils";
 export async function insertDataDynamoDB<T>(
   tableName: string,
   Item: T,
-  isMasterTable = false
 ): Promise<{ pk: string; sk: string }> {
   try {
     return insertItemIntoDynamoDB<T>(tableName, Item);
@@ -15,7 +14,7 @@ export async function insertDataDynamoDB<T>(
       error,
       "Error while insert item into dynamoDB",
       `learnerSK:`,
-      { tableName, Item, isMasterTable }
+      { tableName, Item }
     );
     handleErrorsAxios(error, {});
   }

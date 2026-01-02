@@ -12,6 +12,7 @@ import { marshall } from "@aws-sdk/util-dynamodb";
 import { IBatchGet, IFetchRelationalFields, IKeyValues } from "../../db_schema/shared/SharedInterface";
 import {
   ALL_TABLE_NAMES,
+  ARCHIVED,
   EXPRESSION_ATTRIBUTES_NAMES,
   EXPRESSION_ATTRIBUTES_VALUES,
   KEY_ATTRIBUTES,
@@ -30,7 +31,6 @@ export async function fetchDynamoDB<T>(
   attributesToGet?: string[],
   queryFilter?: IKeyValues,
   filterString?: string,
-  isMaterTable = false,
   objectForSlicingRelationalData = {
     skipValue: 0,
     itemsPerPage: 0,
@@ -41,137 +41,221 @@ export async function fetchDynamoDB<T>(
     if (!TABLE_PK_MAPPER[tableName]) {
       throw new Error(TABLE_NAME_NOT_FOUND);
     }
-
-    const TABLE_NAME = isMaterTable
-      ? process.env.MASTER_TABLE_NAME
-      : process.env.MODERATOR_TABLE_NAME;
-
-    if (!TABLE_NAME) {
-      throw new Error("DynamoDB table name not defined");
-    }
-
-    const expressionAttributeNames: Record<string, string> = {};
+    const expressionAttributeNames: { [key: string]: string } = {};
     const expressionAttributeValues: IKeyValues = {};
-    const projectionExpression: string[] = [];
-
+    const projectionExpression = [];
+    const tempAttributesToGet: string[] = [];
     let relationalTables: string[] = [];
     let relationalAttributesToGet: string[] = [];
-
     const { skipValue, itemsPerPage, relationalTable } =
       objectForSlicingRelationalData;
-
-    /* ---------------- Projection handling ---------------- */
-
-    const attrs = attributesToGet ? [...attributesToGet] : [];
-
-    if (attrs.length && attrs[0] !== "*") {
-      if (!attrs.includes(KEY_ATTRIBUTES.pk)) {
+    if (attributesToGet && attributesToGet[0] != "*") {
+      if (!attributesToGet.includes(KEY_ATTRIBUTES.pk)) {
         expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] =
           KEY_ATTRIBUTES.pk;
         projectionExpression.push(EXPRESSION_ATTRIBUTES_NAMES.pk);
       }
-
-      if (!attrs.includes(KEY_ATTRIBUTES.sk)) {
+      if (!attributesToGet.includes(KEY_ATTRIBUTES.sk)) {
         expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] =
           KEY_ATTRIBUTES.sk;
         projectionExpression.push(EXPRESSION_ATTRIBUTES_NAMES.sk);
       }
+
+      attributesToGet?.forEach((item) => {
+        if (item.charAt(0) == item.charAt(0).toUpperCase()) {
+          if (
+            item.split("/")[0] &&
+            !relationalTables.includes(item.split("/")[0])
+          ) {
+            relationalTables.push(item.split("/")[0]);
+            expressionAttributeNames[
+              SPECIAL_CHARACTERS.HASH + item.split("/")[0]
+            ] = item.split("/")[0];
+            projectionExpression.push(
+              SPECIAL_CHARACTERS.HASH + item.split("/")[0]
+            );
+          }
+          if (item.split("/")[1] == "*") {
+            if (
+              item.split("/")[0] &&
+              !relationalAttributesToGet.includes(item.split("/")[0])
+            ) {
+              relationalAttributesToGet.push(
+                ...RELATIONAL_TABLES_PROPERTIES[item.split("/")[0]]
+              );
+            }
+          } else {
+            if (
+              item.split("/")[1] &&
+              !relationalAttributesToGet.includes(item.split("/")[1])
+            ) {
+              relationalAttributesToGet.push(item.split("/")[1]);
+            }
+          }
+        } else {
+          expressionAttributeNames[SPECIAL_CHARACTERS.HASH + item] = item;
+          projectionExpression.push(SPECIAL_CHARACTERS.HASH + item);
+        }
+      });
+    } else if (attributesToGet) {
+      attributesToGet.shift();
+      tempAttributesToGet.push(...attributesToGet);
+      attributesToGet.forEach((item) => {
+        if (item.charAt(0) == item.charAt(0).toUpperCase()) {
+          if (!relationalTables.includes(item.split("/")[0])) {
+            relationalTables.push(item.split("/")[0]);
+          }
+          if (item.split("/")[1] == "*") {
+            if (!relationalAttributesToGet.includes(item.split("/")[0])) {
+              relationalAttributesToGet.push(
+                ...RELATIONAL_TABLES_PROPERTIES[item.split("/")[0]]
+              );
+            }
+          } else {
+            if (
+              item.split("/")[0] &&
+              !relationalAttributesToGet.includes(item.split("/")[0])
+            ) {
+              relationalAttributesToGet.push(item.split("/")[1]);
+            }
+          }
+        } else {
+          expressionAttributeNames[SPECIAL_CHARACTERS.HASH + item] = item;
+          projectionExpression.push(SPECIAL_CHARACTERS.HASH + item);
+        }
+      });
     }
+    //remove undefined attributes
+    relationalTables = relationalTables?.filter((ele) => ele);
+    //remove undefined attributes
+    relationalAttributesToGet = relationalAttributesToGet?.filter((ele) => ele);
+    //remove duplicates
+    relationalTables = relationalTables?.filter(
+      (item, index) => relationalTables?.indexOf(item) === index
+    );
+    //remove duplicates
+    relationalAttributesToGet = relationalAttributesToGet?.filter(
+      (item, index) => relationalAttributesToGet?.indexOf(item) === index
+    );
 
-    /* ---------------- Filters ---------------- */
-
+    if (!relationalAttributesToGet?.includes(KEY_ATTRIBUTES.pk)) {
+      relationalAttributesToGet.push(KEY_ATTRIBUTES.pk);
+    }
+    if (!relationalAttributesToGet?.includes(KEY_ATTRIBUTES.sk)) {
+      relationalAttributesToGet.push(KEY_ATTRIBUTES.sk);
+    }
     if (queryFilter) {
       for (const [key, value] of Object.entries(queryFilter)) {
-        const safeKey = key.replace(".", "_");
-
-        expressionAttributeNames[`#${safeKey}`] = key;
-        expressionAttributeValues[`:${safeKey}`] = value;
-      }
-
-      if (filterString) {
-        for (const key of Object.keys(expressionAttributeNames)) {
-          if (
-            !filterString.includes(key) &&
-            !projectionExpression.includes(key)
-          ) {
-            delete expressionAttributeNames[key];
-          }
+        if (key.includes(".")) {
+          expressionAttributeValues[
+            SPECIAL_CHARACTERS.COLON + key.replace(".", "_")
+          ] = value;
+        } else if (
+          !expressionAttributeNames[key] != null &&
+          !key.includes(".")
+        ) {
+          expressionAttributeNames[SPECIAL_CHARACTERS.HASH + key] = key;
+          expressionAttributeValues[SPECIAL_CHARACTERS.COLON + key] = value;
         }
-
-        for (const key of Object.keys(expressionAttributeValues)) {
-          if (!filterString.includes(key)) {
-            delete expressionAttributeValues[key];
-          }
+      }
+      for (const [key, value] of Object.entries(expressionAttributeNames)) {
+        if (
+          !filterString.includes(key) &&
+          !projectionExpression.includes(key)
+        ) {
+          delete expressionAttributeNames[key];
+        }
+      }
+      //deleting unused expressionValues
+      for (const [key, value] of Object.entries(expressionAttributeValues)) {
+        if (!filterString.includes(key)) {
+          delete expressionAttributeValues[key];
         }
       }
     }
-
-    /* ---------------- GET by SK ---------------- */
-
     if (sk) {
+      if (
+        !projectionExpression.includes(ARCHIVED.exprssionName) &&
+        projectionExpression.length > 0
+      ) {
+        projectionExpression.push(ARCHIVED.exprssionName);
+        expressionAttributeNames[ARCHIVED.exprssionName] = ARCHIVED.is_archived;
+      }
       const params: GetItemCommandInput = {
-        TableName: TABLE_NAME,
+        TableName: DYNAMODB_CONFIG.TABLE_NAME,
         Key: marshall({
           pk: TABLE_PK_MAPPER[tableName],
-          sk,
+          sk: sk,
         }),
-        ExpressionAttributeNames: Object.keys(expressionAttributeNames).length
-          ? expressionAttributeNames
-          : undefined,
-        ProjectionExpression: projectionExpression.length
-          ? projectionExpression.join(",")
-          : undefined,
+        ExpressionAttributeNames:
+          Object.keys(expressionAttributeNames).length > 0
+            ? expressionAttributeNames
+            : undefined,
+        ProjectionExpression:
+          projectionExpression.length > 0
+            ? projectionExpression.join(SPECIAL_CHARACTERS.COMMA)
+            : undefined,
       };
-
       const result = await getItemFromDynamoDB(params);
-      if (!result) return [];
-
+      if (!result) {
+        return [];
+      }
       if (
-        relationalTable &&
-        result[relationalTable] &&
-        (skipValue > 0 || itemsPerPage > 0)
+        (skipValue > 0 || itemsPerPage > 0) &&
+        relationalTable != null &&
+        ALL_TABLE_NAMES[relationalTable] &&
+        result[relationalTable]
       ) {
         if (Array.isArray(result[relationalTable])) {
-          result[TOATAL_COUNT] = result[relationalTable].length;
+          result[TOATAL_COUNT] = result[relationalTable]?.length;
           result[relationalTable] = result[relationalTable].slice(
             skipValue,
-            skipValue + itemsPerPage
+            itemsPerPage + skipValue
           );
+        } else if (typeof result[relationalTable] === "object") {
+          result[TOATAL_COUNT] = 1;
         }
       }
-
-      return await getRelationalData<T>(
+      // fetching the relational data attributes
+      const dataWithRelations = await getRelationalData<T>(
         [result as T],
         relationalTables,
         relationalAttributesToGet,
       );
+      return dataWithRelations;
+    } else {
+      expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] =
+        KEY_ATTRIBUTES.pk;
+      expressionAttributeValues[EXPRESSION_ATTRIBUTES_VALUES.pk] =
+        TABLE_PK_MAPPER[tableName];
+      const params: QueryCommandInput = {
+        TableName: DYNAMODB_CONFIG.TABLE_NAME,
+        KeyConditionExpression:
+          EXPRESSION_ATTRIBUTES_NAMES.pk +
+          SPECIAL_CHARACTERS.EQUALS_COLON +
+          KEY_ATTRIBUTES.pk,
+        FilterExpression:
+          filterString && filterString.length > 0 ? filterString : undefined,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ProjectionExpression:
+          projectionExpression.length > 0
+            ? projectionExpression.join(SPECIAL_CHARACTERS.COMMA)
+            : undefined,
+      };
+      const result = await queryItemsFromDynamoDB<T>(params);
+      console.log('result', result);
+      if (!result) {
+        return [];
+      }
+      const dataWithRelations = await getRelationalData<T>(
+        result,
+        relationalTables,
+        relationalAttributesToGet,
+      );
+      console.log('dataWithRelations', dataWithRelations);
+      return dataWithRelations;
     }
-
-    /* ---------------- QUERY ---------------- */
-
-    expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] =
-      KEY_ATTRIBUTES.pk;
-    expressionAttributeValues[EXPRESSION_ATTRIBUTES_VALUES.pk] =
-      TABLE_PK_MAPPER[tableName];
-
-    const queryParams: QueryCommandInput = {
-      TableName: TABLE_NAME,
-      KeyConditionExpression: `${EXPRESSION_ATTRIBUTES_NAMES.pk} = ${EXPRESSION_ATTRIBUTES_VALUES.pk}`,
-      FilterExpression: filterString || undefined,
-      ExpressionAttributeNames: expressionAttributeNames,
-      ExpressionAttributeValues: expressionAttributeValues,
-      ProjectionExpression: projectionExpression.length
-        ? projectionExpression.join(",")
-        : undefined,
-    };
-
-    const result = await queryItemsFromDynamoDB<T>(queryParams);
-
-    return await getRelationalData<T>(
-      result,
-      relationalTables,
-      relationalAttributesToGet,
-    );
   } catch (error) {
     logErrorLocation(
       "fetchCalls.ts",
@@ -185,7 +269,6 @@ export async function fetchDynamoDB<T>(
         attributesToGet,
         queryFilter,
         filterString,
-        isMaterTable,
       }
     );
 

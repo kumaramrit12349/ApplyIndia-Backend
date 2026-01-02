@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "dotenv -e src/env/dev.env -- nodemon src/server.ts",
+    "start:debug": "dotenv -e src/env/dev.env -- node --inspect=9229 -r ts-node/register src/server.ts",
     "build": "tsc",
     "start:prod": "dotenv -e src/env/prod.env -- node dist/server.js",
     "test": "jest"
