@@ -6,7 +6,6 @@ import {
   editCompleteNotification,
   getHomePageNotifications,
   getNotificationById,
-  getNotificationBySlug,
   getNotificationsByCategory,
   unarchiveNotification,
   viewNotifications,
@@ -108,22 +107,6 @@ router.get("/home", async (req, res) => {
     res.status(500).json({ error: "Database error", details: err });
   }
 });
-
-// Get single notification by title (PUBLIC)
-router.get("/getBySlug/:slug", async (req, res) => {
-  try {
-    const notification = await getNotificationBySlug(req.params?.slug);
-    if (!notification) {
-      return res.status(404).json({ error: "Notification not found" });
-    }
-    res.json({ success: true, notification });
-  } catch (err) {
-    res.status(500).json({ error: "Database error", details: err });
-  }
-});
-
-
-
 
 // Group notifications by category for the HomePage (PUBLIC)
 router.get("/category/:category", async (req, res) => {

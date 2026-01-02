@@ -45,8 +45,6 @@ export const NOTIFICATION = {
   result_url: "result_url",
   other_links: "other_links",
 
-  slug: "slug",
-
   approved_by: "approved_by",
   approved_at: "approved_at",
   is_archived: "is_archived",

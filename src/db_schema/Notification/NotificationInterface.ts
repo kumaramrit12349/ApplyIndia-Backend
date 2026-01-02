@@ -4,6 +4,7 @@ export interface BaseInterface {
 }
 export interface NotificationForm {
   // Basic details
+  sk: string;
   title: string;
   category: string;
   department: string;
@@ -44,8 +45,6 @@ export interface NotificationForm {
   min_percentage: number;
   additional_details?: string; // HTML from editor
 
-  slug: string;
-
   // links
   youtube_link: string;
   apply_online_url: string;
@@ -74,12 +73,12 @@ export interface INotification {
 }
 
 export interface NotificationRow {
-  slug: string;
+  sk: string;
   title: string;
 }
 
 export interface NotificationListResponse {
-  data: Array<{ title: string; slug: string }>;
+  data: Array<{ title: string; sk: string }>;
   total: number;
   page: number;
   hasMore: boolean;

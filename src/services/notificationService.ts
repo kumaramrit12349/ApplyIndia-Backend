@@ -80,35 +80,6 @@ export async function viewNotifications(): Promise<any> {
 }
 
 // Get single notification by ID with all related data
-export async function getNotificationBySlug(
-  slug: string
-): Promise<NotificationRow | null> {
-  try {
-    const results = await fetchDynamoDB<NotificationRow>(
-      TABLE_PK_MAPPER.Notification, // PK = Notification#
-      undefined, // no SK → query list
-      undefined, // fetch all attributes
-      {
-        slug: slug, // key-value filter
-      },
-      "#slug = :slug" // filter expression
-    );
-
-    return results.length > 0 ? results[0] : null;
-  } catch (error) {
-    logErrorLocation(
-      "notificationService.ts",
-      "getNotificationBySlug",
-      error,
-      "DB error while fetching notification by slug (DynamoDB)",
-      "",
-      { slug }
-    );
-    throw error;
-  }
-}
-
-// Get single notification by ID with all related data
 export async function getNotificationById(
   id: string
 ): Promise<INotification | null> {
@@ -242,7 +213,7 @@ export async function unarchiveNotification(
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
 export async function getHomePageNotifications(): Promise<
-  Record<string, Array<{ title: string; slug: string }>>
+  Record<string, Array<{ title: string; sk: string }>>
 > {
   try {
     const notifications = await fetchDynamoDB<NotificationForm>(
@@ -261,7 +232,7 @@ export async function getHomePageNotifications(): Promise<
     notifications.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
 
     // 3️⃣ Group notifications
-    const grouped: Record<string, Array<{ title: string; slug: string }>> = {};
+    const grouped: Record<string, Array<{ title: string; sk: string }>> = {};
 
     for (const n of notifications) {
       const category = n.category || "Uncategorized";
@@ -270,7 +241,7 @@ export async function getHomePageNotifications(): Promise<
       if (!grouped[category]) grouped[category] = [];
       grouped[category].push({
         title: n.title,
-        slug: n.slug,
+        sk: n.sk,
       });
 
       // Virtual categories
@@ -280,7 +251,7 @@ export async function getHomePageNotifications(): Promise<
         }
         grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD].push({
           title: n.title,
-          slug: n.slug,
+          sk: n.sk,
         });
       }
 
@@ -290,7 +261,7 @@ export async function getHomePageNotifications(): Promise<
         }
         grouped[NOTIFICATION_CATEGORIES.SYLLABUS].push({
           title: n.title,
-          slug: n.slug,
+          sk: n.sk,
         });
       }
 
@@ -300,7 +271,7 @@ export async function getHomePageNotifications(): Promise<
         }
         grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY].push({
           title: n.title,
-          slug: n.slug,
+          sk: n.sk,
         });
       }
 
@@ -310,7 +281,7 @@ export async function getHomePageNotifications(): Promise<
         }
         grouped[NOTIFICATION_CATEGORIES.RESULT].push({
           title: n.title,
-          slug: n.slug,
+          sk: n.sk,
         });
       }
     }
@@ -381,15 +352,12 @@ export async function getNotificationsByCategory(
     // 4️⃣ Fetch from DynamoDB
     const result = await fetchDynamoDBWithLimit<{
       title: string;
-      slug: string;
       created_at?: number;
+      sk: string;
     }>(
       TABLE_PK_MAPPER.Notification,
       limit,
       lastEvaluatedKey,
-      ["title", "slug", "created_at"],
-      expressionValues,
-      filterExpression
     );
 
     // 5️⃣ Sort by created_at DESC (SQL equivalent)
@@ -398,7 +366,7 @@ export async function getNotificationsByCategory(
     return {
       data: result.results.map((n) => ({
         title: n.title,
-        slug: n.slug,
+        sk: n.sk,
       })),
       total: -1,
       page: 0, // not meaningful in DynamoDB
