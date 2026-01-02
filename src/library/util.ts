@@ -1,5 +1,5 @@
 import { ulid } from "ulid";
 
-export function generateId() {
-  return ulid(32);
+export function generateId(): string {
+  return ulid();
 }

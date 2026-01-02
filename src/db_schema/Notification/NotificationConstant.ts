@@ -1,3 +1,10 @@
+export const NOTIFICATION_TYPE = {
+  META: "META",
+  DETAILS: "DETAILS",
+  ELIGIBILITY: "ELIGIBILITY",
+  FEE: "FEE",
+  LINKS: "LINKS",
+};
 export const NOTIFICATION = {
   sk: "sk",
   title: "title",
@@ -50,6 +57,7 @@ export const NOTIFICATION = {
   is_archived: "is_archived",
   created_at: "created_at",
   modified_at: "modified_at",
+  type: "type",
 } as const;
 
 export const DETAIL_VIEW_NOTIFICATION = [
@@ -97,7 +105,7 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.answer_key_url,
   NOTIFICATION.result_url,
   NOTIFICATION.other_links,
-]
+];
 
 export const HOME_PAGE_NOTIFICATION = [
   NOTIFICATION.title,
@@ -110,5 +118,4 @@ export const HOME_PAGE_NOTIFICATION = [
   NOTIFICATION.has_answer_key,
   NOTIFICATION.has_result,
   NOTIFICATION.created_at,
-
-]
+];

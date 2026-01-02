@@ -1,5 +1,4 @@
 import { logErrorLocation } from "../utils/errorUtils";
-import { insertDataDynamoDB } from "../Interpreter/dynamoDB/insertCalls";
 import {
   ALL_TABLE_NAME,
   NOTIFICATION_CATEGORIES,
@@ -11,6 +10,7 @@ import {
 } from "../Interpreter/dynamoDB/fetchCalls";
 import {
   INotification,
+  normalizeNotificationForm,
   NotificationForm,
   NotificationListItem,
   NotificationListResponse,
@@ -21,20 +21,85 @@ import {
   DETAIL_VIEW_NOTIFICATION,
   HOME_PAGE_NOTIFICATION,
   NOTIFICATION,
+  NOTIFICATION_TYPE,
 } from "../db_schema/Notification/NotificationConstant";
 import { INVALID_INPUT } from "../db_schema/shared/ErrorMessage";
+import { generateId } from "../library/util";
+import { insertBulkDataDynamoDB } from "../Interpreter/dynamoDB/transactCall";
 
 // Add complete notification with all related tables
-export async function addCompleteNotification(data: NotificationForm) {
+export async function addCompleteNotification(data: any) {
   try {
-    // Insert into DynamoDB using generic method
-    const { pk, sk } = await insertDataDynamoDB(ALL_TABLE_NAME.Notification, {
-      ...data,
-      is_archived: false, // recommended default
-    });
+    const normalized = normalizeNotificationForm(data);
+    const notificationId = generateId();
+    const now = Date.now();
+    const pk = TABLE_PK_MAPPER.Notification;
+
+    const metaItem = {
+      pk,
+      sk: `${pk}${notificationId}#META`,
+
+      // notification_id: notificationId,
+      type: NOTIFICATION_TYPE.META,
+      title: normalized.title,
+      category: normalized.category,
+      department: normalized.department,
+
+      start_date: normalized.start_date,
+      last_date_to_apply: normalized.last_date_to_apply,
+      exam_date: normalized.exam_date,
+
+      total_vacancies: normalized.total_vacancies,
+
+      is_archived: false,
+      approved_at: null,
+      created_at: now,
+      modified_at: now,
+
+      gsi1pk: `CATEGORY#${normalized.category}`,
+      gsi1sk: `DATE#${normalized.last_date_to_apply}#${notificationId}`,
+    };
+
+    const detailsItem = {
+      pk,
+      sk: `${pk}${notificationId}#DETAILS`,
+      type: NOTIFICATION_TYPE.DETAILS,
+      short_description: normalized.short_description,
+      long_description: normalized.long_description,
+      important_date_details: normalized.important_date_details,
+    };
+
+    const feeItem = {
+      pk,
+      sk: `${pk}${notificationId}#FEE`,
+      type: NOTIFICATION_TYPE.FEE,
+      ...normalized.fee,
+    };
+
+    const eligibilityItem = {
+      pk,
+      sk: `${pk}${notificationId}#ELIGIBILITY`,
+      type: NOTIFICATION_TYPE.ELIGIBILITY,
+      ...normalized.eligibility,
+    };
+
+    const linksItem = {
+      pk,
+      sk: `${pk}${notificationId}#LINKS`,
+      type: NOTIFICATION_TYPE.LINKS,
+      ...normalized.links,
+    };
+    // 🔥 ATOMIC INSERT (THIS WAS MISSING)
+    await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [
+      metaItem,
+      detailsItem,
+      feeItem,
+      eligibilityItem,
+      linksItem,
+    ]);
     return {
       success: true,
-      notificationId: sk, // DynamoDB SK acts as unique ID
+      notificationId,
       pk,
       message: "Notification created successfully",
     };
@@ -52,23 +117,25 @@ export async function addCompleteNotification(data: NotificationForm) {
 }
 
 // View all notifications (excluding archived)
-export async function viewNotifications(): Promise<any> {
+export async function viewNotifications(): Promise<any[]> {
   try {
     const notifications = await fetchDynamoDB<any>(
-      ALL_TABLE_NAME.Notification, // table name mapper
-      undefined, // no SK → list fetch,
+      ALL_TABLE_NAME.Notification,
+      undefined,
       [
+        NOTIFICATION.sk,
         NOTIFICATION.title,
         NOTIFICATION.category,
         NOTIFICATION.created_at,
-        NOTIFICATION.approved_at,
-        NOTIFICATION.approved_by,
-        NOTIFICATION.is_archived,
-      ]
+        NOTIFICATION.type,
+      ],
+      { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
+      "#type = :type",
+      undefined,
+      false
     );
-    // Optional: sort by created_at DESC (DynamoDB does not auto-sort)
     return notifications.sort(
-      (a, b) => Number(b.created_at) - Number(a.created_at)
+      (a, b) => Number(b.created_at || 0) - Number(a.created_at || 0)
     );
   } catch (error) {
     logErrorLocation(
