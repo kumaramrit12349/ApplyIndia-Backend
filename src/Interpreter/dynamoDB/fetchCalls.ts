@@ -35,7 +35,8 @@ export async function fetchDynamoDB<T>(
     skipValue: 0,
     itemsPerPage: 0,
     relationalTable: null as string | null,
-  }
+  },
+  includeArchived: boolean = true
 ): Promise<T[]> {
   try {
     if (!TABLE_PK_MAPPER[tableName]) {
@@ -243,8 +244,7 @@ export async function fetchDynamoDB<T>(
             ? projectionExpression.join(SPECIAL_CHARACTERS.COMMA)
             : undefined,
       };
-      const result = await queryItemsFromDynamoDB<T>(params);
-      console.log('result', result);
+      const result = await queryItemsFromDynamoDB<T>(params, includeArchived);
       if (!result) {
         return [];
       }
@@ -253,7 +253,6 @@ export async function fetchDynamoDB<T>(
         relationalTables,
         relationalAttributesToGet,
       );
-      console.log('dataWithRelations', dataWithRelations);
       return dataWithRelations;
     }
   } catch (error) {

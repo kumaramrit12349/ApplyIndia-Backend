@@ -16,11 +16,13 @@ import {
   NotificationListResponse,
   NotificationRow,
 } from "../db_schema/Notification/NotificationInterface";
+import { updateDynamoDB } from "../Interpreter/dynamoDB/updateCalls";
+import { DETAIL_NOTIFICATION_FOR_EDIT, HOME_PAGE_NOTIFICATION, NOTIFICATION } from "../db_schema/Notification/NotificationConstant";
+import { INVALID_INPUT } from "../db_schema/shared/ErrorMessage";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: NotificationForm) {
   try {
-    console.log("data", data);
     // Insert into DynamoDB using generic method
     const { pk, sk } = await insertDataDynamoDB(ALL_TABLE_NAME.Notification, {
       ...data,
@@ -50,10 +52,16 @@ export async function viewNotifications(): Promise<any> {
   try {
     const notifications = await fetchDynamoDB<any>(
       ALL_TABLE_NAME.Notification, // table name mapper
-      undefined, // no SK → list fetch
-      ["title", "category", "created_at", "is_archived", "approved_at"]
+      undefined, // no SK → list fetch,
+      [
+        NOTIFICATION.title,
+        NOTIFICATION.category,
+        NOTIFICATION.created_at,
+        NOTIFICATION.approved_at,
+        NOTIFICATION.approved_by,
+        NOTIFICATION.is_archived,
+      ]
     );
-    console.log('notifications', notifications);
     // Optional: sort by created_at DESC (DynamoDB does not auto-sort)
     return notifications.sort(
       (a, b) => Number(b.created_at) - Number(a.created_at)
@@ -105,14 +113,12 @@ export async function getNotificationById(
   id: string
 ): Promise<INotification | null> {
   try {
+    const notificationSk = TABLE_PK_MAPPER.Notification + id;
     const result = await fetchDynamoDB<INotification>(
-      TABLE_PK_MAPPER.Notification, // PK = Notification#
-      id, // SK = notification id
-      undefined, // fetch all attributes
-      undefined, // no extra filters
-      undefined // no filter expression
+      ALL_TABLE_NAME.Notification, // PK = Notification#
+      notificationSk,
+      DETAIL_NOTIFICATION_FOR_EDIT
     );
-
     return result.length > 0 ? result[0] : null;
   } catch (error) {
     logErrorLocation(
@@ -133,33 +139,19 @@ export async function editCompleteNotification(
   data: NotificationForm
 ) {
   try {
-    // 1️⃣ Fetch existing notification
-    const existing = await getNotificationById(id);
-
-    if (!existing) {
-      throw new Error("Notification not found");
+    const notificationSk = TABLE_PK_MAPPER.Notification + id;
+    if (!notificationSk || !data) {
+      throw new Error(INVALID_INPUT);
     }
-
-    // 2️⃣ Merge old + new data
-    const updatedItem = {
-      ...existing,
+    const attributestoUpdate = {
       ...data,
-      pk: TABLE_PK_MAPPER.Notification, // preserve PK
-      sk: TABLE_PK_MAPPER.Notification + existing.id, // preserve SK
-      modified_at: Date.now(), // update timestamp
     };
-
-    // 3️⃣ Overwrite item in DynamoDB (non-master table)
-    const { sk } = await insertDataDynamoDB(
+    const { sk } = await updateDynamoDB(
       TABLE_PK_MAPPER.Notification,
-      updatedItem
+      notificationSk,
+      attributestoUpdate
     );
-
-    return {
-      success: true,
-      notificationId: sk,
-      message: "Notification updated successfully",
-    };
+    return true;
   } catch (error) {
     logErrorLocation(
       "notificationService.ts",
@@ -177,27 +169,15 @@ export async function editCompleteNotification(
 export async function approveNotification(
   id: string,
   approvedBy: string
-): Promise<INotification | null> {
+): Promise<any | null> {
   try {
-    // 1️⃣ Fetch existing notification
-    const existing = await getNotificationById(id);
-
-    if (!existing) {
-      return null;
+    const notoficationSk = TABLE_PK_MAPPER.Notification + id;
+    const attributesToUpdate = {
+      [NOTIFICATION.approved_at]: Date.now(),
+      [NOTIFICATION.approved_by]: approvedBy
     }
-
-    // 2️⃣ Merge approval fields
-    const updatedItem = {
-      ...existing,
-      approved_at: Date.now(),
-      approved_by: approvedBy,
-      modified_at: Date.now(),
-    };
-
-    // 3️⃣ Overwrite item in DynamoDB (non-master table)
-    await insertDataDynamoDB(TABLE_PK_MAPPER.Notification, updatedItem);
-
-    return updatedItem;
+    await updateDynamoDB(TABLE_PK_MAPPER.Notification, notoficationSk, attributesToUpdate);
+    return attributesToUpdate;
   } catch (error) {
     logErrorLocation(
       "notificationService.ts",
@@ -214,26 +194,14 @@ export async function approveNotification(
 // Archive notification (soft delete)
 export async function archiveNotification(
   id: string
-): Promise<INotification | null> {
+): Promise<any | null> {
   try {
-    // 1️⃣ Fetch existing notification
-    const existing = await getNotificationById(id);
-
-    if (!existing) {
-      return null;
+    const notificationSk= TABLE_PK_MAPPER.Notification + id;
+    const attributesToUpdate = {
+      [NOTIFICATION.is_archived]: true
     }
-
-    // 2️⃣ Mark as archived
-    const updatedItem = {
-      ...existing,
-      is_archived: true,
-      modified_at: Date.now(),
-    };
-
-    // 3️⃣ Overwrite item in DynamoDB
-    await insertDataDynamoDB(TABLE_PK_MAPPER.Notification, updatedItem);
-
-    return updatedItem;
+    await updateDynamoDB(TABLE_PK_MAPPER.Notification, notificationSk, attributesToUpdate);
+    return true;
   } catch (error) {
     logErrorLocation(
       "notificationService.ts",
@@ -250,26 +218,14 @@ export async function archiveNotification(
 // Unarchive notification
 export async function unarchiveNotification(
   id: string
-): Promise<INotification | null> {
+): Promise<any | null> {
   try {
-    // 1️⃣ Fetch existing notification
-    const existing = await getNotificationById(id);
-
-    if (!existing) {
-      return null;
-    }
-
-    // 2️⃣ Mark as unarchived
-    const updatedItem = {
-      ...existing,
-      is_archived: false,
-      modified_at: Date.now(),
+    const notificationSk = TABLE_PK_MAPPER.Notification + id;
+    const attributestoUpdate = {
+      [NOTIFICATION.is_archived]: false,
     };
-
-    // 3️⃣ Overwrite item in DynamoDB
-    await insertDataDynamoDB(TABLE_PK_MAPPER.Notification, updatedItem);
-
-    return updatedItem;
+    await updateDynamoDB(TABLE_PK_MAPPER.Notification, notificationSk, attributestoUpdate);
+    return true;
   } catch (error) {
     logErrorLocation(
       "notificationService.ts",
@@ -289,34 +245,17 @@ export async function getHomePageNotifications(): Promise<
   Record<string, Array<{ title: string; slug: string }>>
 > {
   try {
-    // 1️⃣ Fetch notifications from DynamoDB
-    const notifications = await fetchDynamoDB<{
-      title: string;
-      slug: string;
-      category?: string;
-      has_syllabus?: boolean;
-      has_admit_card?: boolean;
-      has_answer_key?: boolean;
-      has_result?: boolean;
-      approved_at?: number;
-      created_at?: number;
-    }>(
-      TABLE_PK_MAPPER.Notification,
+    const notifications = await fetchDynamoDB<NotificationForm>(
+      ALL_TABLE_NAME.Notification,
       undefined,
-      [
-        "title",
-        "slug",
-        "category",
-        "has_syllabus",
-        "has_admit_card",
-        "has_answer_key",
-        "has_result",
-        "approved_at",
-        "created_at",
-      ],
-      undefined,
-      "#approved_at <> :nullVal"
+      HOME_PAGE_NOTIFICATION,
+     { [NOTIFICATION.approved_by]:"admin" },
+      "(#approved_by=:approved_by)",
+    undefined,
+    false
     );
+
+    console.log('notifications', notifications);
 
     // 2️⃣ Sort by created_at DESC (SQL equivalent)
     notifications.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));

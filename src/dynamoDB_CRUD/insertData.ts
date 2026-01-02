@@ -40,7 +40,7 @@ export async function insertItemIntoDynamoDB<T>(
       error,
       "Error while insert item into DynamoDB",
       `learnerSK:`,
-      { tableName, Item }
+      { tableName, Item, }
     );
     handleErrorsAxios(error, {});
   }

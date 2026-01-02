@@ -7,6 +7,7 @@ import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { DYNAMODB_KEYWORDS, INSERT_ITEM_MAPPER } from "../db_schema/shared/SharedConstant";
 import { handleErrorsAxios, logErrorLocation } from "../utils/errorUtils";
 import { DYNAMODB_CONFIG } from "../config/env";
+import { dynamoDBClient } from "../aws/dynamodb.client";
 
 export async function updateItemDynamoDB(
   updateItemParam: any,
@@ -30,14 +31,7 @@ export async function updateItemDynamoDB(
       TableName: DYNAMODB_CONFIG.TABLE_NAME,
       ...updateItemParam,
     };
-    const dynamoDbparam: DynamoDBClientConfig = {
-      region: process.env.AWSRegion,
-      credentials: {
-        accessKeyId: process.env.AWSAccessKeyId,
-        secretAccessKey: process.env.AWSSecretAccessKey,
-      },
-    };
-    const dynamoDB = new DynamoDBClient(dynamoDbparam);
+    const dynamoDB = new DynamoDBClient(dynamoDBClient);
     const data = await dynamoDB.send(new UpdateItemCommand(params));
     return unmarshall(data.Attributes);
   } catch (error) {

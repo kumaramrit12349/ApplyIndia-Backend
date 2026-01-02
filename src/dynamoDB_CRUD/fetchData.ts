@@ -19,7 +19,7 @@ import { IBatchGet } from "../db_schema/shared/SharedInterface";
 import { DYNAMODB_CONFIG } from "../config/env";
 
 export async function getItemFromDynamoDB(
-  getItemParam: GetItemCommandInput
+  getItemParam: GetItemCommandInput,
 ): Promise<Record<string, any> | undefined> {
   try {
     const dynamoDB = new DynamoDBClient(dynamoDBClient);
@@ -27,7 +27,8 @@ export async function getItemFromDynamoDB(
       new GetItemCommand(getItemParam)
     );
     const item = data.Item ? unmarshall(data.Item) : undefined;
-    return item?.is_archived ? undefined : item;
+    return item;
+    // return item?.is_archived ? undefined : item;
   } catch (error) {
     logErrorLocation(
       "fetchData.ts",
@@ -42,21 +43,31 @@ export async function getItemFromDynamoDB(
 }
 
 export async function queryItemsFromDynamoDB<T>(
-  queryPrams: QueryCommandInput
+  queryPrams: QueryCommandInput,
+  includeArchived: boolean = true
 ): Promise<T[]> {
   try {
-    let result: QueryCommandOutput, ExclusiveStartKey;
-    if (!queryPrams?.ExpressionAttributeValues[ARCHIVED.exprssionValue]) {
-      queryPrams.ExpressionAttributeValues[ARCHIVED.exprssionValue] =
-        false as any; // as it is required to marshalled value here but we are marshalling below
+    let result: QueryCommandOutput;
+    let ExclusiveStartKey: Record<string, any> | undefined;
+    queryPrams.ExpressionAttributeNames ??= {};
+    queryPrams.ExpressionAttributeValues ??= {};
+    /**
+     * Apply archived filter ONLY when archived items
+     * should be excluded
+     */
+    if (!includeArchived) {
       queryPrams.ExpressionAttributeNames[ARCHIVED.exprssionName] =
         ARCHIVED.is_archived;
+      queryPrams.ExpressionAttributeValues[ARCHIVED.exprssionValue] =
+        false as any;
+      if (queryPrams.FilterExpression) {
+        queryPrams.FilterExpression += ARCHIVED.filterExpression;
+      } else {
+        queryPrams.FilterExpression =
+          ARCHIVED.filterExpression.substring(4);
+      }
     }
-    if (queryPrams?.FilterExpression) {
-      queryPrams.FilterExpression += ARCHIVED.filterExpression;
-    } else {
-      queryPrams.FilterExpression = ARCHIVED.filterExpression.substring(4);
-    }
+    // Marshal after all mutations
     queryPrams.ExpressionAttributeValues = marshall(
       queryPrams.ExpressionAttributeValues
     );
@@ -64,24 +75,17 @@ export async function queryItemsFromDynamoDB<T>(
     do {
       const params: QueryCommandInput = {
         ...queryPrams,
-        ExclusiveStartKey: ExclusiveStartKey,
+        ExclusiveStartKey,
       };
-      // const dynamoDbparam: DynamoDBClientConfig = {
-      //   region: process.env.AWSRegion,
-      //   credentials: {
-      //     accessKeyId: process.env.AWSAccessKeyId,
-      //     secretAccessKey: process.env.AWSSecretAccessKey,
-      //   },
-      // };
       const dynamoDB = new DynamoDBClient(dynamoDBClient);
       result = await dynamoDB.send(new QueryCommand(params));
       ExclusiveStartKey = result.LastEvaluatedKey;
-      if (result?.Items) {
+      if (result.Items) {
         for (const item of result.Items) {
           accumulated.push(unmarshall(item) as T);
         }
       }
-    } while (result?.Items && result?.LastEvaluatedKey);
+    } while (result.LastEvaluatedKey);
     return accumulated;
   } catch (error) {
     logErrorLocation(
@@ -93,6 +97,7 @@ export async function queryItemsFromDynamoDB<T>(
       { queryPrams }
     );
     handleErrorsAxios(error, {});
+    return [];
   }
 }
 
@@ -122,7 +127,7 @@ export async function queryItemsWithLimitDynamoDB<
         ARCHIVED.is_archived;
     }
     if (queryParams.FilterExpression) {
-      queryParams.FilterExpression += ARCHIVED.filterExpression;
+      // queryParams.FilterExpression += ARCHIVED.filterExpression;
     } else {
       queryParams.FilterExpression =
         ARCHIVED.filterExpression.substring(4);
@@ -237,9 +242,9 @@ export async function batchGetItemsFromDynamoDB<
         if (responses) {
           for (const response of responses) {
             const item = unmarshall(response) as T;
-            if (!item?.is_archived) {
-              finalResult.push(item);
-            }
+            // if (!item?.is_archived) {
+            //   finalResult.push(item);
+            // }
           }
         }
         unprocessedItems = result.UnprocessedKeys;

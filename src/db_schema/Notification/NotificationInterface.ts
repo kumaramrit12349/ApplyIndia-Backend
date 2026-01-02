@@ -1,9 +1,8 @@
 export interface BaseInterface {
-  id: string;
   created_at: string;
-  updated_at: string;
+  modified_at: string;
 }
-export interface NotificationForm extends BaseInterface {
+export interface NotificationForm {
   // Basic details
   title: string;
   category: string;
@@ -13,6 +12,7 @@ export interface NotificationForm extends BaseInterface {
   short_description: string; // HTML from editor
   long_description: string; // HTML from editor
 
+  has_syllabus: boolean;
   has_admit_card: boolean;
   has_result: boolean;
   has_answer_key: boolean;
@@ -44,6 +44,8 @@ export interface NotificationForm extends BaseInterface {
   min_percentage: number;
   additional_details?: string; // HTML from editor
 
+  slug: string;
+
   // links
   youtube_link: string;
   apply_online_url: string;
@@ -53,6 +55,9 @@ export interface NotificationForm extends BaseInterface {
   answer_key_url?: string;
   result_url?: string;
   other_links?: string;
+
+  created_at?: number,
+  modified_at?: number,
 }
 
 export type NotificationListItem = {
