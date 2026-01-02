@@ -9,7 +9,11 @@ import {
   QueryCommandInput,
 } from "@aws-sdk/client-dynamodb";
 import { marshall } from "@aws-sdk/util-dynamodb";
-import { IBatchGet, IFetchRelationalFields, IKeyValues } from "../../db_schema/shared/SharedInterface";
+import {
+  IBatchGet,
+  IFetchRelationalFields,
+  IKeyValues,
+} from "../../db_schema/shared/SharedInterface";
 import {
   ALL_TABLE_NAMES,
   ARCHIVED,
@@ -36,7 +40,8 @@ export async function fetchDynamoDB<T>(
     itemsPerPage: 0,
     relationalTable: null as string | null,
   },
-  includeArchived: boolean = true
+  includeArchived: boolean = true,
+  skBeginsWith?: string
 ): Promise<T[]> {
   try {
     if (!TABLE_PK_MAPPER[tableName]) {
@@ -221,20 +226,41 @@ export async function fetchDynamoDB<T>(
       const dataWithRelations = await getRelationalData<T>(
         [result as T],
         relationalTables,
-        relationalAttributesToGet,
+        relationalAttributesToGet
       );
       return dataWithRelations;
     } else {
+      // pk is always required for Query
       expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] =
         KEY_ATTRIBUTES.pk;
       expressionAttributeValues[EXPRESSION_ATTRIBUTES_VALUES.pk] =
         TABLE_PK_MAPPER[tableName];
+
+      // Base KeyConditionExpression
+      let keyConditionExpression =
+        EXPRESSION_ATTRIBUTES_NAMES.pk +
+        SPECIAL_CHARACTERS.EQUALS_COLON +
+        KEY_ATTRIBUTES.pk;
+
+      // ⭐ ADD begins_with(sk, skBeginsWith) SUPPORT
+      if (skBeginsWith) {
+        expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] =
+          KEY_ATTRIBUTES.sk;
+
+        expressionAttributeValues[EXPRESSION_ATTRIBUTES_VALUES.sk] =
+          skBeginsWith;
+
+        keyConditionExpression +=
+          " AND begins_with(" +
+          EXPRESSION_ATTRIBUTES_NAMES.sk +
+          ", " +
+          EXPRESSION_ATTRIBUTES_VALUES.sk +
+          ")";
+      }
+
       const params: QueryCommandInput = {
         TableName: DYNAMODB_CONFIG.TABLE_NAME,
-        KeyConditionExpression:
-          EXPRESSION_ATTRIBUTES_NAMES.pk +
-          SPECIAL_CHARACTERS.EQUALS_COLON +
-          KEY_ATTRIBUTES.pk,
+        KeyConditionExpression: keyConditionExpression,
         FilterExpression:
           filterString && filterString.length > 0 ? filterString : undefined,
         ExpressionAttributeNames: expressionAttributeNames,
@@ -244,14 +270,16 @@ export async function fetchDynamoDB<T>(
             ? projectionExpression.join(SPECIAL_CHARACTERS.COMMA)
             : undefined,
       };
+
       const result = await queryItemsFromDynamoDB<T>(params, includeArchived);
       if (!result) {
         return [];
       }
+
       const dataWithRelations = await getRelationalData<T>(
         result,
         relationalTables,
-        relationalAttributesToGet,
+        relationalAttributesToGet
       );
       return dataWithRelations;
     }
@@ -282,7 +310,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
   startKey?: Record<string, any>,
   attributesToGet?: string[],
   queryFilter?: IKeyValues,
-  filterString?: string,
+  filterString?: string
 ): Promise<{ results: T[]; lastEvaluatedKey?: Record<string, any> }> {
   try {
     const pkValue = TABLE_PK_MAPPER[tableName];
@@ -397,7 +425,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
     const dataWithRelations = await getRelationalData<T>(
       result.results,
       relationalTables,
-      relationalAttributesToGet,
+      relationalAttributesToGet
     );
 
     return {
@@ -429,7 +457,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
 export async function getRelationalData<T extends Record<string, any>>(
   result: T[],
   relationalTables: string[],
-  relationalAttributesToGet: string[],
+  relationalAttributesToGet: string[]
 ): Promise<T[]> {
   if (
     !relationalTables?.length ||
@@ -477,13 +505,17 @@ export async function getRelationalData<T extends Record<string, any>>(
   --------------------------------------------- */
   const expressionAttributeNames: Record<string, string> = {};
   const projectionExpression: string[] = [];
-  relationalAttributesToGet = Array.from(new Set(relationalAttributesToGet)).filter(Boolean);
+  relationalAttributesToGet = Array.from(
+    new Set(relationalAttributesToGet)
+  ).filter(Boolean);
   if (!relationalAttributesToGet.includes(KEY_ATTRIBUTES.pk)) {
-    expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] = KEY_ATTRIBUTES.pk;
+    expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] =
+      KEY_ATTRIBUTES.pk;
     projectionExpression.push(EXPRESSION_ATTRIBUTES_NAMES.pk);
   }
   if (!relationalAttributesToGet.includes(KEY_ATTRIBUTES.sk)) {
-    expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] = KEY_ATTRIBUTES.sk;
+    expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] =
+      KEY_ATTRIBUTES.sk;
     projectionExpression.push(EXPRESSION_ATTRIBUTES_NAMES.sk);
   }
   for (const attr of relationalAttributesToGet) {
@@ -501,9 +533,7 @@ export async function getRelationalData<T extends Record<string, any>>(
         : undefined,
     ProjectionExpression: projectionExpression.join(SPECIAL_CHARACTERS.COMMA),
   };
-  const relationalData = await batchGetItemsFromDynamoDB(
-    batchGetParams,
-  );
+  const relationalData = await batchGetItemsFromDynamoDB(batchGetParams);
   const relationalMap = new Map<string, Record<string, any>>();
   for (const item of relationalData) {
     relationalMap.set(item[KEY_ATTRIBUTES.sk], item);

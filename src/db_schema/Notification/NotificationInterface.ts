@@ -22,7 +22,7 @@ export interface NotificationForm {
   start_date: string; // ISO date string (yyyy-mm-dd)
   last_date_to_apply: string;
   exam_date?: string;
-  admit_card_available_date?: string;
+  admit_card_date?: string;
   result_date?: string;
   important_date_details?: string; // HTML from editor
 
@@ -55,8 +55,8 @@ export interface NotificationForm {
   result_url?: string;
   other_links?: string;
 
-  created_at?: number,
-  modified_at?: number,
+  created_at?: number;
+  modified_at?: number;
 }
 
 export type NotificationListItem = {
@@ -84,7 +84,6 @@ export interface NotificationListResponse {
   hasMore: boolean;
   lastEvaluatedKey;
 }
-
 
 interface NormalizedNotificationDTO {
   title: string;
@@ -150,6 +149,8 @@ export function normalizeNotificationForm(data: any) {
     short_description: data.short_description,
     long_description: data.long_description,
 
+    admit_card_date: data.admit_card_date,
+
     fee: {
       general_fee: data.general_fee,
       obc_fee: data.obc_fee,
@@ -181,7 +182,3 @@ export function normalizeNotificationForm(data: any) {
     },
   };
 }
-
-
-
-

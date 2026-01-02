@@ -24,7 +24,7 @@ import {
   NOTIFICATION_TYPE,
 } from "../db_schema/Notification/NotificationConstant";
 import { INVALID_INPUT } from "../db_schema/shared/ErrorMessage";
-import { generateId } from "../library/util";
+import { buildNotificationDetail, generateId } from "../library/util";
 import { insertBulkDataDynamoDB } from "../Interpreter/dynamoDB/transactCall";
 
 // Add complete notification with all related tables
@@ -155,13 +155,25 @@ export async function getNotificationById(
   id: string
 ): Promise<INotification | null> {
   try {
+    console.log("id", id);
     const notificationSk = TABLE_PK_MAPPER.Notification + id;
     const result = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAME.Notification, // PK = Notification#
-      notificationSk,
-      DETAIL_VIEW_NOTIFICATION
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      DETAIL_VIEW_NOTIFICATION,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      notificationSk
     );
-    return result.length > 0 ? result[0] : null;
+    // const result = await fetchDynamoDB<INotification>(
+    //   ALL_TABLE_NAME.Notification, // PK = Notification#
+    //   notificationSk,
+    //   DETAIL_VIEW_NOTIFICATION
+    // );
+    console.log('result', buildNotificationDetail(result));
+    return buildNotificationDetail(result);
   } catch (error) {
     logErrorLocation(
       "notificationService.ts",

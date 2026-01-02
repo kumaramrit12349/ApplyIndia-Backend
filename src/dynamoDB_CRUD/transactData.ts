@@ -8,7 +8,7 @@ import { DYNAMODB_CONFIG } from "../config/env";
 import { dynamoDBClient } from "../aws/dynamodb.client";
 import { handleErrorsAxios, logErrorLocation } from "../utils/errorUtils";
 
-export async function insertItemsIntoDynamoDBInBulk<T>(
+export async function insertItemsIntoDynamoDBInBulk<T extends Record<string, any>>(
   tableName: string,
   items: T[],
 ): Promise<void> {
@@ -17,14 +17,27 @@ export async function insertItemsIntoDynamoDBInBulk<T>(
       throw new Error("No items provided for bulk insert");
     }
 
-    const transactItems: TransactWriteItem[] = items.map((item) => ({
-      Put: {
-        TableName: DYNAMODB_CONFIG.TABLE_NAME,
-        Item: marshall(item, { removeUndefinedValues: true }),
-        ConditionExpression:
-          "attribute_not_exists(pk) AND attribute_not_exists(sk)",
-      },
-    }));
+    const now = Date.now();
+
+    const transactItems: TransactWriteItem[] = items.map((item) => {
+      // 🔑 Do NOT mutate original object
+      const itemWithTimestamps = {
+        ...item,
+        created_at: item.created_at ?? now, // only if missing
+        modified_at: now,                   // always update
+      };
+
+      return {
+        Put: {
+          TableName: DYNAMODB_CONFIG.TABLE_NAME,
+          Item: marshall(itemWithTimestamps, {
+            removeUndefinedValues: true,
+          }),
+          ConditionExpression:
+            "attribute_not_exists(pk) AND attribute_not_exists(sk)",
+        },
+      };
+    });
 
     const dynamoDB = new DynamoDBClient(dynamoDBClient);
 

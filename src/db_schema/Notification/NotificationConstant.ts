@@ -105,6 +105,14 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.answer_key_url,
   NOTIFICATION.result_url,
   NOTIFICATION.other_links,
+
+  NOTIFICATION.created_at,
+  NOTIFICATION.modified_at,
+  NOTIFICATION.approved_at,
+  NOTIFICATION.approved_by,
+
+
+  
 ];
 
 export const HOME_PAGE_NOTIFICATION = [
