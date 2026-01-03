@@ -61,6 +61,12 @@ export async function addCompleteNotification(data: INotification) {
 
       total_vacancies: data.total_vacancies,
 
+      has_syllabus: data?.has_syllabus,
+      has_admit_card: data?.has_admit_card,
+      has_result: data?.has_result,
+      has_answer_key: data?.has_answer_key,
+      
+
       is_archived: false,
       approved_at: null,
 

@@ -27,7 +27,6 @@ export const NOTIFICATION = {
   approved_by: "approved_by",
   is_archived: "is_archived",
 
-  /* 🔥 logical grouping ONLY (mapping, not DynamoDB nesting) */
   details: {
     short_description: "short_description",
     long_description: "long_description",
