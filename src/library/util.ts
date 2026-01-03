@@ -9,12 +9,6 @@ export function buildNotificationDetail(items: any[]): any {
 
   for (const item of items) {
     const sk: string = item.sk;
-
-    // Extract ID once
-    if (!result.id) {
-      result.id = sk.split("#")[1];
-    }
-
     if (sk.endsWith("#META")) {
       Object.assign(result, {
         title: item.title,
@@ -76,4 +70,8 @@ export function buildNotificationDetail(items: any[]): any {
   }
 
   return result;
+}
+
+export function toEpoch(start_date: string) {
+  throw new Error("Function not implemented.");
 }

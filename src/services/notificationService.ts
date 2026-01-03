@@ -8,88 +8,98 @@ import {
   fetchDynamoDB,
   fetchDynamoDBWithLimit,
 } from "../Interpreter/dynamoDB/fetchCalls";
-import {
-  INotification,
-  normalizeNotificationForm,
-  NotificationForm,
-  NotificationListItem,
-  NotificationListResponse,
-  NotificationRow,
-} from "../db_schema/Notification/NotificationInterface";
 import { updateDynamoDB } from "../Interpreter/dynamoDB/updateCalls";
 import {
   DETAIL_VIEW_NOTIFICATION,
-  HOME_PAGE_NOTIFICATION,
   NOTIFICATION,
   NOTIFICATION_TYPE,
 } from "../db_schema/Notification/NotificationConstant";
 import { INVALID_INPUT } from "../db_schema/shared/ErrorMessage";
-import { buildNotificationDetail, generateId } from "../library/util";
+import { buildNotificationDetail, generateId, toEpoch } from "../library/util";
 import { insertBulkDataDynamoDB } from "../Interpreter/dynamoDB/transactCall";
+import {
+  INotification,
+  INotificationListItem,
+} from "../db_schema/Notification/NotificationInterface";
 
 // Add complete notification with all related tables
-export async function addCompleteNotification(data: any) {
+export async function addCompleteNotification(data: INotification) {
   try {
-    const normalized = normalizeNotificationForm(data);
+    if (!data.title || !data.category || !data.start_date) {
+      throw new Error("Missing required notification fields");
+    }
+
     const notificationId = generateId();
     const now = Date.now();
     const pk = TABLE_PK_MAPPER.Notification;
 
-    const metaItem = {
+    const base = {
       pk,
+      notification_id: notificationId,
+      created_at: now,
+      modified_at: now,
+    };
+
+    // ✅ Normalize dates
+    const startDate = toEpoch(data.start_date);
+    const lastDateToApply = toEpoch(data.last_date_to_apply);
+    const examDate = toEpoch(data.exam_date);
+
+    const metaItem = {
+      ...base,
       sk: `${pk}${notificationId}#META`,
-
-      // notification_id: notificationId,
       type: NOTIFICATION_TYPE.META,
-      title: normalized.title,
-      category: normalized.category,
-      department: normalized.department,
 
-      start_date: normalized.start_date,
-      last_date_to_apply: normalized.last_date_to_apply,
-      exam_date: normalized.exam_date,
+      title: data.title,
+      category: data.category || "UNKNOWN",
+      department: data.department || "UNKNOWN",
 
-      total_vacancies: normalized.total_vacancies,
+      start_date: startDate,
+      last_date_to_apply: lastDateToApply,
+      exam_date: examDate,
+
+      total_vacancies: data.total_vacancies,
 
       is_archived: false,
       approved_at: null,
-      created_at: now,
-      modified_at: now,
 
-      gsi1pk: `CATEGORY#${normalized.category}`,
-      gsi1sk: `DATE#${normalized.last_date_to_apply}#${notificationId}`,
+      // ✅ GSI must also use NUMBER
+      gsi1pk: `CATEGORY#${data.category || "UNKNOWN"}`,
+      gsi1sk: `DATE#${lastDateToApply ?? 0}#${notificationId}`,
     };
 
     const detailsItem = {
-      pk,
+      ...base,
       sk: `${pk}${notificationId}#DETAILS`,
       type: NOTIFICATION_TYPE.DETAILS,
-      short_description: normalized.short_description,
-      long_description: normalized.long_description,
-      important_date_details: normalized.important_date_details,
+      short_description: data.details?.short_description || "",
+      long_description: data.details?.long_description || "",
+      important_date_details: data.details?.important_date_details || "",
     };
 
     const feeItem = {
-      pk,
+      ...base,
       sk: `${pk}${notificationId}#FEE`,
       type: NOTIFICATION_TYPE.FEE,
-      ...normalized.fee,
+      ...(data.fee || {}),
     };
 
     const eligibilityItem = {
-      pk,
+      ...base,
       sk: `${pk}${notificationId}#ELIGIBILITY`,
       type: NOTIFICATION_TYPE.ELIGIBILITY,
-      ...normalized.eligibility,
+      ...(data.eligibility || {}),
     };
 
     const linksItem = {
-      pk,
+      ...base,
       sk: `${pk}${notificationId}#LINKS`,
       type: NOTIFICATION_TYPE.LINKS,
-      ...normalized.links,
+      ...Object.fromEntries(
+        Object.entries(data.links || {}).filter(([_, v]) => !!v)
+      ),
     };
-    // 🔥 ATOMIC INSERT (THIS WAS MISSING)
+
     await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [
       metaItem,
       detailsItem,
@@ -97,6 +107,7 @@ export async function addCompleteNotification(data: any) {
       eligibilityItem,
       linksItem,
     ]);
+
     return {
       success: true,
       notificationId,
@@ -117,26 +128,29 @@ export async function addCompleteNotification(data: any) {
 }
 
 // View all notifications (excluding archived)
-export async function viewNotifications(): Promise<any[]> {
+export async function viewNotifications(): Promise<INotificationListItem[]> {
   try {
-    const notifications = await fetchDynamoDB<any>(
+    const notifications = await fetchDynamoDB<INotificationListItem>(
       ALL_TABLE_NAME.Notification,
       undefined,
       [
+        NOTIFICATION.pk,
         NOTIFICATION.sk,
         NOTIFICATION.title,
         NOTIFICATION.category,
         NOTIFICATION.created_at,
+        NOTIFICATION.approved_at,
+        NOTIFICATION.approved_by,
         NOTIFICATION.type,
+        NOTIFICATION.is_archived,
       ],
       { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
       "#type = :type",
       undefined,
       false
     );
-    return notifications.sort(
-      (a, b) => Number(b.created_at || 0) - Number(a.created_at || 0)
-    );
+
+    return notifications.sort((a, b) => b.created_at - a.created_at);
   } catch (error) {
     logErrorLocation(
       "notificationService.ts",
@@ -155,25 +169,42 @@ export async function getNotificationById(
   id: string
 ): Promise<INotification | null> {
   try {
-    console.log("id", id);
-    const notificationSk = TABLE_PK_MAPPER.Notification + id;
-    const result = await fetchDynamoDB<INotification>(
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+
+    const skPrefix = `${TABLE_PK_MAPPER.Notification}${id}`;
+    console.log("skPrefix", skPrefix);
+    console.log("DETAIL_VIEW_NOTIFICATION", DETAIL_VIEW_NOTIFICATION);
+
+    const items = await fetchDynamoDB<any>(
       ALL_TABLE_NAME.Notification,
       undefined,
       DETAIL_VIEW_NOTIFICATION,
       undefined,
       undefined,
       undefined,
-      false,
-      notificationSk
+      false, // ✅ DO NOT FILTER is_archived
+      skPrefix
     );
-    // const result = await fetchDynamoDB<INotification>(
-    //   ALL_TABLE_NAME.Notification, // PK = Notification#
-    //   notificationSk,
-    //   DETAIL_VIEW_NOTIFICATION
-    // );
-    console.log('result', buildNotificationDetail(result));
-    return buildNotificationDetail(result);
+
+    if (!items || items.length === 0) {
+      return null;
+    }
+
+    // Ensure META exists
+    const meta = items.find((i) => i.type === NOTIFICATION_TYPE.META);
+
+    if (!meta) {
+      return null;
+    }
+
+    // Optional: block archived notifications
+    if (meta.is_archived === true) {
+      return null;
+    }
+    console.log("items", items);
+    return buildNotificationDetail(items);
   } catch (error) {
     logErrorLocation(
       "notificationService.ts",
@@ -190,21 +221,85 @@ export async function getNotificationById(
 // Edit notification with all related tables
 export async function editCompleteNotification(
   id: string,
-  data: NotificationForm
+  data: Partial<INotification>
 ) {
   try {
-    const notificationSk = TABLE_PK_MAPPER.Notification + id;
-    if (!notificationSk || !data) {
+    console.log("data", data);
+    if (!id || !data) {
       throw new Error(INVALID_INPUT);
     }
-    const attributestoUpdate = {
-      ...data,
-    };
-    const { sk } = await updateDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      notificationSk,
-      attributestoUpdate
-    );
+
+    const pk = TABLE_PK_MAPPER.Notification;
+    const now = Date.now();
+
+    const updates: Promise<any>[] = [];
+
+    /* ================= META ================= */
+    if (
+      data.title ||
+      data.category ||
+      data.department ||
+      data.start_date ||
+      data.last_date_to_apply ||
+      data.exam_date ||
+      data.total_vacancies !== undefined
+    ) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#META`, {
+          ...(data.title && { title: data.title }),
+          ...(data.category && { category: data.category }),
+          ...(data.department && { department: data.department }),
+          ...(data.start_date && { start_date: data.start_date }),
+          ...(data.last_date_to_apply && {
+            last_date_to_apply: data.last_date_to_apply,
+          }),
+          ...(data.exam_date && { exam_date: data.exam_date }),
+          ...(data.total_vacancies !== undefined && {
+            total_vacancies: data.total_vacancies,
+          }),
+        })
+      );
+    }
+
+    /* ================= DETAILS ================= */
+    if (data.details) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#DETAILS`, {
+          ...data.details,
+        })
+      );
+    }
+
+    /* ================= FEE ================= */
+    if (data.fee) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#FEE`, {
+          ...data.fee,
+        })
+      );
+    }
+
+    /* ================= ELIGIBILITY ================= */
+    if (data.eligibility) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#ELIGIBILITY`, {
+          ...data.eligibility,
+        })
+      );
+    }
+
+    /* ================= LINKS ================= */
+    if (data.links) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#LINKS`, {
+          ...Object.fromEntries(
+            Object.entries(data.links).filter(([_, v]) => !!v)
+          ),
+        })
+      );
+    }
+
+    await Promise.all(updates);
     return true;
   } catch (error) {
     logErrorLocation(
@@ -223,18 +318,26 @@ export async function editCompleteNotification(
 export async function approveNotification(
   id: string,
   approvedBy: string
-): Promise<any | null> {
+): Promise<{
+  approved_at: number;
+  approved_by: string;
+}> {
   try {
-    const notoficationSk = TABLE_PK_MAPPER.Notification + id;
+    if (!id || !approvedBy) {
+      throw new Error("Invalid approve notification input");
+    }
+
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}#META`;
+    const now = Date.now();
+
     const attributesToUpdate = {
-      [NOTIFICATION.approved_at]: Date.now(),
-      [NOTIFICATION.approved_by]: approvedBy,
+      approved_at: now,
+      approved_by: approvedBy,
     };
-    await updateDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      notoficationSk,
-      attributesToUpdate
-    );
+
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+
     return attributesToUpdate;
   } catch (error) {
     logErrorLocation(
@@ -250,17 +353,23 @@ export async function approveNotification(
 }
 
 // Archive notification (soft delete)
-export async function archiveNotification(id: string): Promise<any | null> {
+// Archive notification (soft delete)
+export async function archiveNotification(id: string): Promise<boolean> {
   try {
-    const notificationSk = TABLE_PK_MAPPER.Notification + id;
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}#META`;
+    const now = Date.now();
+
     const attributesToUpdate = {
-      [NOTIFICATION.is_archived]: true,
+      is_archived: true,
     };
-    await updateDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      notificationSk,
-      attributesToUpdate
-    );
+
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+
     return true;
   } catch (error) {
     logErrorLocation(
@@ -276,17 +385,22 @@ export async function archiveNotification(id: string): Promise<any | null> {
 }
 
 // Unarchive notification
-export async function unarchiveNotification(id: string): Promise<any | null> {
+// Unarchive notification (restore)
+export async function unarchiveNotification(id: string): Promise<boolean> {
   try {
-    const notificationSk = TABLE_PK_MAPPER.Notification + id;
-    const attributestoUpdate = {
-      [NOTIFICATION.is_archived]: false,
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}#META`;
+
+    const attributesToUpdate = {
+      is_archived: false,
     };
-    await updateDynamoDB(
-      TABLE_PK_MAPPER.Notification,
-      notificationSk,
-      attributestoUpdate
-    );
+
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+
     return true;
   } catch (error) {
     logErrorLocation(
@@ -307,73 +421,78 @@ export async function getHomePageNotifications(): Promise<
   Record<string, Array<{ title: string; sk: string }>>
 > {
   try {
-    const notifications = await fetchDynamoDB<NotificationForm>(
+    const items = await fetchDynamoDB<INotification>(
       ALL_TABLE_NAME.Notification,
       undefined,
-      HOME_PAGE_NOTIFICATION,
-      { [NOTIFICATION.approved_by]: "admin" },
-      "(#approved_by=:approved_by)",
+      [
+        NOTIFICATION.sk,
+        NOTIFICATION.title,
+        NOTIFICATION.category,
+        NOTIFICATION.created_at,
+        NOTIFICATION.has_admit_card,
+        NOTIFICATION.has_syllabus,
+        NOTIFICATION.has_answer_key,
+        NOTIFICATION.has_result,
+        NOTIFICATION.approved_at,
+        NOTIFICATION.approved_by,
+        NOTIFICATION.type,
+      ],
+      {
+        [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+        [NOTIFICATION.approved_by]: "admin",
+      },
+      "#type = :type AND #approved_by = :approved_by",
       undefined,
-      false
+      false // exclude archived
     );
 
-    console.log("notifications", notifications);
+    // Extra safety: ensure approved_at exists and is number
+    const approved = items.filter((n) => typeof n.approved_at === "number");
 
-    // 2️⃣ Sort by created_at DESC (SQL equivalent)
-    notifications.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+    // Sort latest first
+    approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
 
-    // 3️⃣ Group notifications
     const grouped: Record<string, Array<{ title: string; sk: string }>> = {};
 
-    for (const n of notifications) {
-      const category = n.category || "Uncategorized";
+    const pushWithLimit = (
+      key: string,
+      item: { title: string; sk: string },
+      limit = 10
+    ) => {
+      if (!grouped[key]) grouped[key] = [];
+      if (grouped[key].length < limit) {
+        grouped[key].push(item);
+      }
+    };
+
+    for (const n of approved) {
+      const sk = n
+        .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+        .replace("#META", "");
+
+      const baseItem = {
+        title: n.title,
+        sk,
+      };
 
       // Primary category
-      if (!grouped[category]) grouped[category] = [];
-      grouped[category].push({
-        title: n.title,
-        sk: n.sk,
-      });
+      pushWithLimit(n.category || "Uncategorized", baseItem);
 
       // Virtual categories
       if (n.has_admit_card) {
-        if (!grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD]) {
-          grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD] = [];
-        }
-        grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD].push({
-          title: n.title,
-          sk: n.sk,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.ADMIT_CARD, baseItem);
       }
 
       if (n.has_syllabus) {
-        if (!grouped[NOTIFICATION_CATEGORIES.SYLLABUS]) {
-          grouped[NOTIFICATION_CATEGORIES.SYLLABUS] = [];
-        }
-        grouped[NOTIFICATION_CATEGORIES.SYLLABUS].push({
-          title: n.title,
-          sk: n.sk,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.SYLLABUS, baseItem);
       }
 
       if (n.has_answer_key) {
-        if (!grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY]) {
-          grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY] = [];
-        }
-        grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY].push({
-          title: n.title,
-          sk: n.sk,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.ANSWER_KEY, baseItem);
       }
 
       if (n.has_result) {
-        if (!grouped[NOTIFICATION_CATEGORIES.RESULT]) {
-          grouped[NOTIFICATION_CATEGORIES.RESULT] = [];
-        }
-        grouped[NOTIFICATION_CATEGORIES.RESULT].push({
-          title: n.title,
-          sk: n.sk,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.RESULT, baseItem);
       }
     }
 
@@ -398,27 +517,53 @@ export async function getNotificationsByCategory(
   limit: number,
   lastEvaluatedKey?: Record<string, any>,
   searchValue?: string
-): Promise<NotificationListResponse> {
+): Promise<{
+  data: Array<{ title: string; id: string }>;
+  hasMore: boolean;
+  lastEvaluatedKey?: Record<string, any>;
+}> {
   try {
     const normalizedCategory = category?.toLowerCase() || "all";
 
     const expressionFilters: string[] = [];
     const expressionValues: Record<string, any> = {};
+    const expressionNames: Record<string, string> = {
+      "#type": NOTIFICATION.type,
+      "#approved_by": NOTIFICATION.approved_by,
+      "#is_archived": NOTIFICATION.is_archived,
+      "#title": NOTIFICATION.title,
+      "#department": NOTIFICATION.department,
+      "#category": NOTIFICATION.category,
+    };
 
-    // 1️⃣ Approved only
-    expressionFilters.push("attribute_exists(#approved_at)");
+    /* ================= BASE FILTERS ================= */
 
-    // 2️⃣ Category handling
+    // META only
+    expressionFilters.push("#type = :type");
+    expressionValues[":type"] = NOTIFICATION_TYPE.META;
+
+    // Approved only
+    expressionFilters.push("#approved_by = :approved_by");
+    expressionValues[":approved_by"] = "admin";
+
+    // Not archived
+    expressionFilters.push("#is_archived = :false");
+    expressionValues[":false"] = false;
+
+    /* ================= CATEGORY LOGIC ================= */
+
     const specialCategoryFlags: Record<string, string> = {
-      [NOTIFICATION_CATEGORIES.ADMIT_CARD]: "has_admit_card",
-      [NOTIFICATION_CATEGORIES.SYLLABUS]: "has_syllabus",
-      [NOTIFICATION_CATEGORIES.ANSWER_KEY]: "has_answer_key",
-      [NOTIFICATION_CATEGORIES.RESULT]: "has_result",
+      [NOTIFICATION_CATEGORIES.ADMIT_CARD]: NOTIFICATION.has_admit_card,
+      [NOTIFICATION_CATEGORIES.SYLLABUS]: NOTIFICATION.has_syllabus,
+      [NOTIFICATION_CATEGORIES.ANSWER_KEY]: NOTIFICATION.has_answer_key,
+      [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION.has_result,
     };
 
     const flag = specialCategoryFlags[normalizedCategory];
+
     if (normalizedCategory !== "all") {
       if (flag) {
+        expressionNames[`#${flag}`] = flag;
         expressionFilters.push(`#${flag} = :true`);
         expressionValues[":true"] = true;
       } else {
@@ -427,7 +572,8 @@ export async function getNotificationsByCategory(
       }
     }
 
-    // 3️⃣ Search (contains)
+    /* ================= SEARCH ================= */
+
     if (searchValue && searchValue.trim()) {
       expressionFilters.push(
         "(contains(#title, :search) OR contains(#department, :search))"
@@ -440,23 +586,30 @@ export async function getNotificationsByCategory(
         ? expressionFilters.join(" AND ")
         : undefined;
 
-    // 4️⃣ Fetch from DynamoDB
-    const result = await fetchDynamoDBWithLimit<{
-      title: string;
-      created_at?: number;
-      sk: string;
-    }>(TABLE_PK_MAPPER.Notification, limit, lastEvaluatedKey);
+    /* ================= QUERY ================= */
 
-    // 5️⃣ Sort by created_at DESC (SQL equivalent)
+    const result = await fetchDynamoDBWithLimit<INotification>(
+      ALL_TABLE_NAME.Notification,
+      limit,
+      lastEvaluatedKey,
+      [NOTIFICATION.sk, NOTIFICATION.title, NOTIFICATION.created_at],
+      expressionValues,
+      filterExpression
+    );
+
+    /* ================= SORT ================= */
+
     result.results.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+
+    /* ================= RESPONSE ================= */
 
     return {
       data: result.results.map((n) => ({
         title: n.title,
-        sk: n.sk,
+        id: n
+          .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+          .replace("#META", ""),
       })),
-      total: -1,
-      page: 0, // not meaningful in DynamoDB
       hasMore: !!result.lastEvaluatedKey,
       lastEvaluatedKey: result.lastEvaluatedKey,
     };

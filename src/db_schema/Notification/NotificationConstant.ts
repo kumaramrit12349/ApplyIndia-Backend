@@ -1,63 +1,68 @@
-export const NOTIFICATION_TYPE = {
-  META: "META",
-  DETAILS: "DETAILS",
-  ELIGIBILITY: "ELIGIBILITY",
-  FEE: "FEE",
-  LINKS: "LINKS",
-};
 export const NOTIFICATION = {
+  /* keys */
+  pk: "pk",
   sk: "sk",
+  type: "type",
+
+  /* meta */
   title: "title",
   category: "category",
   department: "department",
   total_vacancies: "total_vacancies",
 
-  short_description: "short_description",
-  long_description: "long_description",
-
-  has_syllabus: "has_syllabus",
   has_admit_card: "has_admit_card",
   has_result: "has_result",
   has_answer_key: "has_answer_key",
+  has_syllabus: "has_syllabus",
 
   start_date: "start_date",
   last_date_to_apply: "last_date_to_apply",
   exam_date: "exam_date",
   admit_card_date: "admit_card_date",
   result_date: "result_date",
-  important_date_details: "important_date_details",
 
-  general_fee: "general_fee",
-  obc_fee: "obc_fee",
-  sc_fee: "sc_fee",
-  st_fee: "st_fee",
-  ph_fee: "ph_fee",
-  other_fee_details: "other_fee_details",
-
-  min_age: "min_age",
-  max_age: "max_age",
-  age_relaxation_details: "age_relaxation_details",
-
-  qualification: "qualification", // Comma seperated
-  specialization: "specialization", // Comman seperated
-  min_percentage: "min_percentage",
-  qualification_details: "qualification_details",
-
-  youtube_link: "youtube_link",
-  apply_online_url: "apply_online_url",
-  notification_pdf_url: "notification_pdf_url",
-  official_website_url: "official_website_url",
-  admit_card_url: "admit_card_url",
-  answer_key_url: "answer_key_url",
-  result_url: "result_url",
-  other_links: "other_links",
-
-  approved_by: "approved_by",
-  approved_at: "approved_at",
-  is_archived: "is_archived",
   created_at: "created_at",
   modified_at: "modified_at",
-  type: "type",
+  approved_at: "approved_at",
+  approved_by: "approved_by",
+  is_archived: "is_archived",
+
+  /* 🔥 logical grouping ONLY (mapping, not DynamoDB nesting) */
+  details: {
+    short_description: "short_description",
+    long_description: "long_description",
+    important_date_details: "important_date_details",
+  },
+
+  fee: {
+    general_fee: "general_fee",
+    obc_fee: "obc_fee",
+    sc_fee: "sc_fee",
+    st_fee: "st_fee",
+    ph_fee: "ph_fee",
+    other_fee_details: "other_fee_details",
+  },
+
+  eligibility: {
+    min_age: "min_age",
+    max_age: "max_age",
+    qualification: "qualification",
+    specialization: "specialization",
+    min_percentage: "min_percentage",
+    age_relaxation_details: "age_relaxation_details",
+    qualification_details: "qualification_details",
+  },
+
+  links: {
+    youtube_link: "youtube_link",
+    apply_online_url: "apply_online_url",
+    notification_pdf_url: "notification_pdf_url",
+    official_website_url: "official_website_url",
+    admit_card_url: "admit_card_url",
+    answer_key_url: "answer_key_url",
+    result_url: "result_url",
+    other_links: "other_links",
+  },
 } as const;
 
 export const DETAIL_VIEW_NOTIFICATION = [
@@ -65,9 +70,11 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.category,
   NOTIFICATION.department,
   NOTIFICATION.total_vacancies,
+  NOTIFICATION.type,
+  NOTIFICATION.is_archived,
 
-  NOTIFICATION.short_description,
-  NOTIFICATION.long_description,
+  NOTIFICATION.details.short_description,
+  NOTIFICATION.details.long_description,
 
   NOTIFICATION.has_syllabus,
   NOTIFICATION.has_admit_card,
@@ -79,40 +86,37 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.exam_date,
   NOTIFICATION.admit_card_date,
   NOTIFICATION.result_date,
-  NOTIFICATION.important_date_details,
+  NOTIFICATION.details.important_date_details,
 
-  NOTIFICATION.general_fee,
-  NOTIFICATION.obc_fee,
-  NOTIFICATION.sc_fee,
-  NOTIFICATION.st_fee,
-  NOTIFICATION.ph_fee,
-  NOTIFICATION.other_fee_details,
+  NOTIFICATION.fee.general_fee,
+  NOTIFICATION.fee.obc_fee,
+  NOTIFICATION.fee.sc_fee,
+  NOTIFICATION.fee.st_fee,
+  NOTIFICATION.fee.ph_fee,
+  NOTIFICATION.fee.other_fee_details,
 
-  NOTIFICATION.min_age,
-  NOTIFICATION.max_age,
-  NOTIFICATION.age_relaxation_details,
+  NOTIFICATION.eligibility.min_age,
+  NOTIFICATION.eligibility.max_age,
+  NOTIFICATION.eligibility.age_relaxation_details,
 
-  NOTIFICATION.qualification,
-  NOTIFICATION.specialization,
-  NOTIFICATION.min_percentage,
-  NOTIFICATION.qualification_details,
+  NOTIFICATION.eligibility.qualification,
+  NOTIFICATION.eligibility.specialization,
+  NOTIFICATION.eligibility.min_percentage,
+  NOTIFICATION.eligibility.qualification_details,
 
-  NOTIFICATION.youtube_link,
-  NOTIFICATION.apply_online_url,
-  NOTIFICATION.notification_pdf_url,
-  NOTIFICATION.official_website_url,
-  NOTIFICATION.admit_card_url,
-  NOTIFICATION.answer_key_url,
-  NOTIFICATION.result_url,
-  NOTIFICATION.other_links,
+  NOTIFICATION.links.youtube_link,
+  NOTIFICATION.links.apply_online_url,
+  NOTIFICATION.links.notification_pdf_url,
+  NOTIFICATION.links.official_website_url,
+  NOTIFICATION.links.admit_card_url,
+  NOTIFICATION.links.answer_key_url,
+  NOTIFICATION.links.result_url,
+  NOTIFICATION.links.other_links,
 
   NOTIFICATION.created_at,
   NOTIFICATION.modified_at,
   NOTIFICATION.approved_at,
   NOTIFICATION.approved_by,
-
-
-  
 ];
 
 export const HOME_PAGE_NOTIFICATION = [
@@ -127,3 +131,11 @@ export const HOME_PAGE_NOTIFICATION = [
   NOTIFICATION.has_result,
   NOTIFICATION.created_at,
 ];
+
+export enum NOTIFICATION_TYPE {
+  META = "META",
+  DETAILS = "DETAILS",
+  FEE = "FEE",
+  ELIGIBILITY = "ELIGIBILITY",
+  LINKS = "LINKS",
+}

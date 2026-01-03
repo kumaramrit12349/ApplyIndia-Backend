@@ -113,7 +113,7 @@ router.get("/category/:category", async (req, res) => {
   try {
     const { category } = req.params;
     const { searchValue } = req.query;
-    const lastEvaluatedKey = req.query.lastEvaluatedKey as any
+    const lastEvaluatedKey = req.query.lastEvaluatedKey as any;
     const limit = parseInt(req.query.limit as string, 10) || 20;
 
     const result = await getNotificationsByCategory(
