@@ -6,7 +6,6 @@ import {
   editCompleteNotification,
   getHomePageNotifications,
   getNotificationById,
-  getNotificationBySlug,
   getNotificationsByCategory,
   unarchiveNotification,
   viewNotifications,
@@ -109,40 +108,37 @@ router.get("/home", async (req, res) => {
   }
 });
 
-// Get single notification by title (PUBLIC)
-router.get("/getBySlug/:slug", async (req, res) => {
-  try {
-    const notification = await getNotificationBySlug(req.params?.slug);
-    if (!notification) {
-      return res.status(404).json({ error: "Notification not found" });
-    }
-    res.json({ success: true, notification });
-  } catch (err) {
-    res.status(500).json({ error: "Database error", details: err });
-  }
-});
-
-
-
-
 // Group notifications by category for the HomePage (PUBLIC)
+// PUBLIC – Category + Search + Infinite Scroll
 router.get("/category/:category", async (req, res) => {
   try {
     const { category } = req.params;
-    const { searchValue } = req.query;
-    const page = parseInt(req.query.page as string, 10) || 1;
-    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const { searchValue, lastEvaluatedKey } = req.query;
+
+    const limit = Number(req.query.limit) || 20;
 
     const result = await getNotificationsByCategory(
       category,
-      page,
       limit,
+      typeof lastEvaluatedKey === "string"
+        ? lastEvaluatedKey
+        : undefined,
       typeof searchValue === "string" ? searchValue : undefined
     );
-    res.json({ success: true, ...result });
+
+    res.json({
+      success: true,
+      ...result,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Database error", details: String(err) });
+    res.status(500).json({
+      success: false,
+      error: "Database error",
+      details: String(err),
+    });
   }
 });
+
+
 
 export default router;

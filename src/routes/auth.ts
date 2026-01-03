@@ -5,13 +5,8 @@ import {
   signInUser,
   signUpUser,
 } from "../services/authService";
-import {
-  IResponse,
-  ISignUpRes,
-  RegisterRequest,
-  IErrorWithDetails,
-} from "../@types/auth";
 import { authenticateMe, authenticateToken } from "../middlewares/authMiddleware";
+import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 
 const router = Router();
 

@@ -1,223 +1,163 @@
-import { NotificationForm, NotificationListItem } from "../@types/notification";
-import { pool } from "../config/pgConfig";
-import {
-  Notification,
-  NotificationListResponse,
-  NotificationRow,
-} from "../models/Notification";
-import {
-  NOTIFICATION_COLUMNS as C,
-  NOTIFICATION_COLUMNS,
-} from "../constant/Notification";
+import { logErrorLocation } from "../utils/errorUtils";
 import {
   ALL_TABLE_NAME,
   NOTIFICATION_CATEGORIES,
-} from "../constant/sharedConstant";
-import { logErrorLocation } from "../utils/errorUtils";
+  TABLE_PK_MAPPER,
+} from "../db_schema/shared/SharedConstant";
+import {
+  fetchDynamoDB,
+  fetchDynamoDBWithLimit,
+} from "../Interpreter/dynamoDB/fetchCalls";
+import { updateDynamoDB } from "../Interpreter/dynamoDB/updateCalls";
+import {
+  DETAIL_VIEW_NOTIFICATION,
+  NOTIFICATION,
+  NOTIFICATION_TYPE,
+} from "../db_schema/Notification/NotificationConstant";
+import { INVALID_INPUT } from "../db_schema/shared/ErrorMessage";
+import { buildNotificationDetail, generateId, toEpoch } from "../library/util";
+import { insertBulkDataDynamoDB } from "../Interpreter/dynamoDB/transactCall";
+import {
+  INotification,
+  INotificationListItem,
+} from "../db_schema/Notification/NotificationInterface";
+import { IKeyValues } from "../db_schema/shared/SharedInterface";
 
 // Add complete notification with all related tables
-export async function addCompleteNotification(data: NotificationForm) {
-  const client = await pool.connect();
+export async function addCompleteNotification(data: INotification) {
   try {
-    await client.query("BEGIN");
-    const query = `
-      INSERT INTO notifications (
-        ${C.TITLE},
-        ${C.CATEGORY},
-        ${C.DEPARTMENT},
-        ${C.TOTAL_VACANCIES},
-        ${C.SHORT_DESCRIPTION},
-        ${C.LONG_DESCRIPTION},
-
-        ${C.HAS_ADMIT_CARD},
-        ${C.HAS_RESULT},
-        ${C.HAS_ANSWER_KEY},
-
-        ${C.START_DATE},
-        ${C.LAST_DATE_TO_APPLY},
-        ${C.EXAM_DATE},
-        ${C.ADMIT_CARD_AVAILABLE_DATE},
-        ${C.RESULT_DATE},
-        ${C.IMPORTANT_DATE_DETAILS},
-
-        ${C.GENERAL_FEE},
-        ${C.OBC_FEE},
-        ${C.SC_FEE},
-        ${C.ST_FEE},
-        ${C.PH_FEE},
-        ${C.OTHER_FEE_DETAILS},
-
-        ${C.MIN_AGE},
-        ${C.MAX_AGE},
-        ${C.AGE_RELAXATION_DETAILS},
-
-        ${C.QUALIFICATION},
-        ${C.SPECIALIZATION},
-        ${C.MIN_PERCENTAGE},
-        ${C.ADDITIONAL_DETAILS},
-
-        ${C.YOUTUBE_LINK},
-        ${C.APPLY_ONLINE_URL},
-        ${C.NOTIFICATION_PDF_URL},
-        ${C.OFFICIAL_WEBSITE_URL},
-        ${C.ADMIT_CARD_URL},
-        ${C.ANSWER_KEY_URL},
-        ${C.RESULT_URL},
-        ${C.OTHER_LINKS}
-      )
-      VALUES (
-        $1,$2,$3,$4,
-        $5,$6,
-        $7,$8,$9,
-        $10,$11,$12,$13,$14,$15,
-        $16,$17,$18,$19,$20,$21,
-        $22,$23,$24,
-        $25,$26,$27,$28,
-        $29,$30,$31,$32,$33,$34,$35,$36
-      )
-      RETURNING id
-    `;
-    const values = [
-      data.title,
-      data.category,
-      data.department || null,
-      data.total_vacancies,
-
-      data.short_description,
-      data.long_description,
-
-      data.has_admit_card,
-      data.has_result,
-      data.has_answer_key,
-
-      data.start_date,
-      data.last_date_to_apply,
-      data.exam_date || null,
-      data.admit_card_available_date || null,
-      data.result_date || null,
-      data.important_date_details || null,
-
-      data.general_fee,
-      data.obc_fee,
-      data.sc_fee,
-      data.st_fee,
-      data.ph_fee,
-      data.other_fee_details,
-
-      data.min_age,
-      data.max_age,
-      data.age_relaxation_details,
-
-      data.qualification,
-      data.specialization,
-      data.min_percentage,
-      data.additional_details || null,
-
-      data.youtube_link,
-      data.apply_online_url,
-      data.notification_pdf_url,
-      data.official_website_url,
-      data.admit_card_url || null,
-      data.answer_key_url || null,
-      data.result_url || null,
-      data.other_links || null,
-    ];
-    const result = await client.query(query, values);
-    await client.query("COMMIT");
-    return {
-      success: true,
-      notificationId: result.rows[0].id,
-      message: "Notification created successfully",
-    };
-  } catch (error: unknown) {
-    // rollback best-effort; ignore rollback failure but still log root error
-    try {
-      await client.query("ROLLBACK");
-    } catch (rollbackError) {
-      console.error(
-        "ROLLBACK failed in addCompleteNotification:",
-        rollbackError
-      );
+    if (!data.title || !data.category || !data.start_date) {
+      throw new Error("Missing required notification fields");
     }
 
+    const notificationId = generateId();
+    const now = Date.now();
+    const pk = TABLE_PK_MAPPER.Notification;
+
+    const base = {
+      pk,
+      notification_id: notificationId,
+      created_at: now,
+      modified_at: now,
+    };
+
+    // ✅ Normalize dates
+    const startDate = toEpoch(data.start_date);
+    const lastDateToApply = toEpoch(data.last_date_to_apply);
+    const examDate = toEpoch(data.exam_date);
+
+    const metaItem = {
+      ...base,
+      sk: `${pk}${notificationId}#META`,
+      type: NOTIFICATION_TYPE.META,
+
+      title: data.title,
+      category: data.category || "UNKNOWN",
+      department: data.department || "UNKNOWN",
+
+      start_date: startDate,
+      last_date_to_apply: lastDateToApply,
+      exam_date: examDate,
+
+      total_vacancies: data.total_vacancies,
+
+      is_archived: false,
+      approved_at: null,
+
+      // ✅ GSI must also use NUMBER
+      gsi1pk: `CATEGORY#${data.category || "UNKNOWN"}`,
+      gsi1sk: `DATE#${lastDateToApply ?? 0}#${notificationId}`,
+    };
+
+    const detailsItem = {
+      ...base,
+      sk: `${pk}${notificationId}#DETAILS`,
+      type: NOTIFICATION_TYPE.DETAILS,
+      short_description: data.details?.short_description || "",
+      long_description: data.details?.long_description || "",
+      important_date_details: data.details?.important_date_details || "",
+    };
+
+    const feeItem = {
+      ...base,
+      sk: `${pk}${notificationId}#FEE`,
+      type: NOTIFICATION_TYPE.FEE,
+      ...(data.fee || {}),
+    };
+
+    const eligibilityItem = {
+      ...base,
+      sk: `${pk}${notificationId}#ELIGIBILITY`,
+      type: NOTIFICATION_TYPE.ELIGIBILITY,
+      ...(data.eligibility || {}),
+    };
+
+    const linksItem = {
+      ...base,
+      sk: `${pk}${notificationId}#LINKS`,
+      type: NOTIFICATION_TYPE.LINKS,
+      ...Object.fromEntries(
+        Object.entries(data.links || {}).filter(([_, v]) => !!v)
+      ),
+    };
+
+    await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [
+      metaItem,
+      detailsItem,
+      feeItem,
+      eligibilityItem,
+      linksItem,
+    ]);
+
+    return {
+      success: true,
+      notificationId,
+      pk,
+      message: "Notification created successfully",
+    };
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "addCompleteNotification",
       error,
-      "DB error while creating notification",
+      "DB error while creating notification (DynamoDB)",
       "",
       { data }
     );
-
-    // let upper layer decide HTTP response (e.g., 500)
     throw error;
-  } finally {
-    client.release();
   }
 }
 
 // View all notifications (excluding archived)
-export async function viewNotifications(): Promise<NotificationListItem[]> {
-  const query = `
-    SELECT
-      ${C.ID},
-      ${C.TITLE},
-      ${C.CATEGORY},
-      ${C.CREATED_AT},
-      ${C.IS_ARCHIVED},
-      ${C.APPROVED_AT}
-    FROM ${ALL_TABLE_NAME.NOTIFICATION}
-    ORDER BY ${C.CREATED_AT} DESC
-  `;
+export async function viewNotifications(): Promise<INotificationListItem[]> {
   try {
-    const result = await pool.query<NotificationListItem>(query);
-    return result.rows;
-  } catch (error: unknown) {
+    const notifications = await fetchDynamoDB<INotificationListItem>(
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      [
+        NOTIFICATION.pk,
+        NOTIFICATION.sk,
+        NOTIFICATION.title,
+        NOTIFICATION.category,
+        NOTIFICATION.created_at,
+        NOTIFICATION.approved_at,
+        NOTIFICATION.approved_by,
+        NOTIFICATION.type,
+        NOTIFICATION.is_archived,
+      ],
+      { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
+      "#type = :type",
+    );
+
+    return notifications.sort((a, b) => b.created_at - a.created_at);
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "viewNotifications",
       error,
-      "DB error while fetching notifications list",
-      query,
+      "DB error while fetching notifications list (DynamoDB)",
+      "",
       {}
-    );
-    // Re-throw so controller/middleware can send appropriate HTTP status
-    throw error;
-  }
-}
-
-// Get single notification by ID with all related data
-export async function getNotificationBySlug(
-  slug: string
-): Promise<NotificationRow | null> {
-  const columnCheckQuery = `
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_name = $1
-      AND column_name = $2
-  `;
-  const query = `
-    SELECT *
-    FROM ${ALL_TABLE_NAME.NOTIFICATION}
-    WHERE ${C.SLUG} = $1
-    LIMIT 1
-  `;
-  try {
-    // Optional backward-compatibility check (kept but not used)
-    await pool.query(columnCheckQuery, [
-      ALL_TABLE_NAME.NOTIFICATION,
-      C.IS_ARCHIVED,
-    ]);
-    const result = await pool.query<NotificationRow>(query, [slug]);
-    return result.rows.length > 0 ? result.rows[0] : null;
-  } catch (error: unknown) {
-    logErrorLocation(
-      "notificationService.ts",
-      "getNotificationById",
-      error,
-      "DB error while fetching notification by id",
-      query,
-      { slug }
     );
     throw error;
   }
@@ -226,34 +166,38 @@ export async function getNotificationBySlug(
 // Get single notification by ID with all related data
 export async function getNotificationById(
   id: string
-): Promise<Notification | null> {
-  const columnCheckQuery = `
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_name = $1
-      AND column_name = $2
-  `;
-  const query = `
-    SELECT *
-    FROM ${ALL_TABLE_NAME.NOTIFICATION}
-    WHERE ${C.ID} = $1
-    LIMIT 1
-  `;
+): Promise<INotification | null> {
   try {
-    // Optional backward-compatibility check (kept but not used)
-    await pool.query(columnCheckQuery, [
-      ALL_TABLE_NAME.NOTIFICATION,
-      C.IS_ARCHIVED,
-    ]);
-    const result = await pool.query<Notification>(query, [id]);
-    return result.rows.length > 0 ? result.rows[0] : null;
-  } catch (error: unknown) {
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+    const skPrefix = `${TABLE_PK_MAPPER.Notification}${id}`;
+    const items = await fetchDynamoDB<any>(
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      DETAIL_VIEW_NOTIFICATION,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      skPrefix
+    );
+    if (!items || items.length === 0) {
+      return null;
+    }
+    // Ensure META exists
+    const meta = items.find((i) => i.type === NOTIFICATION_TYPE.META);
+    if (!meta) {
+      return null;
+    }
+    return buildNotificationDetail(items);
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "getNotificationById",
       error,
-      "DB error while fetching notification by id",
-      query,
+      "DB error while fetching notification by id (DynamoDB)",
+      "",
       { id }
     );
     throw error;
@@ -263,159 +207,131 @@ export async function getNotificationById(
 // Edit notification with all related tables
 export async function editCompleteNotification(
   id: string,
-  data: NotificationForm
+  data: Partial<INotification>
 ) {
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-    const query = `
-      UPDATE notifications
-      SET
-        ${C.TITLE} = $1,
-        ${C.CATEGORY} = $2,
-        ${C.DEPARTMENT} = $3,
-        ${C.TOTAL_VACANCIES} = $4,
+    console.log("data", data);
+    if (!id || !data) {
+      throw new Error(INVALID_INPUT);
+    }
 
-        ${C.SHORT_DESCRIPTION} = $5,
-        ${C.LONG_DESCRIPTION} = $6,
+    const pk = TABLE_PK_MAPPER.Notification;
+    const now = Date.now();
 
-        ${C.HAS_ADMIT_CARD} = $7,
-        ${C.HAS_RESULT} = $8,
-        ${C.HAS_ANSWER_KEY} = $9,
+    const updates: Promise<any>[] = [];
 
-        ${C.START_DATE} = $10,
-        ${C.LAST_DATE_TO_APPLY} = $11,
-        ${C.EXAM_DATE} = $12,
-        ${C.ADMIT_CARD_AVAILABLE_DATE} = $13,
-        ${C.RESULT_DATE} = $14,
-        ${C.IMPORTANT_DATE_DETAILS} = $15,
-
-        ${C.GENERAL_FEE} = $16,
-        ${C.OBC_FEE} = $17,
-        ${C.SC_FEE} = $18,
-        ${C.ST_FEE} = $19,
-        ${C.PH_FEE} = $20,
-        ${C.OTHER_FEE_DETAILS} = $21,
-
-        ${C.MIN_AGE} = $22,
-        ${C.MAX_AGE} = $23,
-        ${C.AGE_RELAXATION_DETAILS} = $24,
-
-        ${C.QUALIFICATION} = $25,
-        ${C.SPECIALIZATION} = $26,
-        ${C.MIN_PERCENTAGE} = $27,
-        ${C.ADDITIONAL_DETAILS} = $28,
-
-        ${C.YOUTUBE_LINK} = $29,
-        ${C.APPLY_ONLINE_URL} = $30,
-        ${C.NOTIFICATION_PDF_URL} = $31,
-        ${C.OFFICIAL_WEBSITE_URL} = $32,
-        ${C.ADMIT_CARD_URL} = $33,
-        ${C.ANSWER_KEY_URL} = $34,
-        ${C.RESULT_URL} = $35,
-        ${C.OTHER_LINKS} = $36,
-        updated_at = NOW()
-      WHERE id = $37
-      RETURNING id;
-    `;
-    const values = [
-      data.title,
-      data.category,
-      data.department || null,
-      data.total_vacancies,
-
-      data.short_description,
-      data.long_description,
-
-      data.has_admit_card,
-      data.has_result,
-      data.has_answer_key,
-
-      data.start_date,
-      data.last_date_to_apply,
-      data.exam_date || null,
-      data.admit_card_available_date || null,
-      data.result_date || null,
-      data.important_date_details || null,
-
-      data.general_fee,
-      data.obc_fee,
-      data.sc_fee,
-      data.st_fee,
-      data.ph_fee,
-      data.other_fee_details,
-
-      data.min_age,
-      data.max_age,
-      data.age_relaxation_details,
-
-      data.qualification,
-      data.specialization,
-      data.min_percentage,
-      data.additional_details || null,
-
-      data.youtube_link,
-      data.apply_online_url,
-      data.notification_pdf_url,
-      data.official_website_url,
-      data.admit_card_url || null,
-      data.answer_key_url || null,
-      data.result_url || null,
-      data.other_links || null,
-
-      id,
-    ];
-    const result = await client.query(query, values);
-    await client.query("COMMIT");
-    return {
-      success: true,
-      notificationId: result.rows[0].id,
-      message: "Notification updated successfully",
-    };
-  } catch (error: unknown) {
-    try {
-      await client.query("ROLLBACK");
-    } catch (rollbackError) {
-      console.error(
-        "ROLLBACK failed in editCompleteNotification:",
-        rollbackError
+    /* ================= META ================= */
+    if (
+      data.title ||
+      data.category ||
+      data.department ||
+      data.start_date ||
+      data.last_date_to_apply ||
+      data.exam_date ||
+      data.total_vacancies !== undefined
+    ) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#META`, {
+          ...(data.title && { title: data.title }),
+          ...(data.category && { category: data.category }),
+          ...(data.department && { department: data.department }),
+          ...(data.start_date && { start_date: data.start_date }),
+          ...(data.last_date_to_apply && {
+            last_date_to_apply: data.last_date_to_apply,
+          }),
+          ...(data.exam_date && { exam_date: data.exam_date }),
+          ...(data.total_vacancies !== undefined && {
+            total_vacancies: data.total_vacancies,
+          }),
+        })
       );
     }
+
+    /* ================= DETAILS ================= */
+    if (data.details) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#DETAILS`, {
+          ...data.details,
+        })
+      );
+    }
+
+    /* ================= FEE ================= */
+    if (data.fee) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#FEE`, {
+          ...data.fee,
+        })
+      );
+    }
+
+    /* ================= ELIGIBILITY ================= */
+    if (data.eligibility) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#ELIGIBILITY`, {
+          ...data.eligibility,
+        })
+      );
+    }
+
+    /* ================= LINKS ================= */
+    if (data.links) {
+      updates.push(
+        updateDynamoDB(pk, `${pk}${id}#LINKS`, {
+          ...Object.fromEntries(
+            Object.entries(data.links).filter(([_, v]) => !!v)
+          ),
+        })
+      );
+    }
+
+    await Promise.all(updates);
+    return true;
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "editCompleteNotification",
       error,
-      "DB error while editing notification",
+      "DB error while editing notification (DynamoDB)",
       "",
       { id, data }
     );
     throw error;
-  } finally {
-    client.release();
   }
 }
 
 // Approve notification
-export async function approveNotification(id: string, approvedBy: string) {
-  const query = `
-    UPDATE notifications 
-    SET 
-      ${C.APPROVED_AT} = NOW(),
-      ${C.APPROVED_BY} = $1
-    WHERE ${C.ID} = $2
-    RETURNING *;
-  `;
-  const values = [approvedBy, id];
+export async function approveNotification(
+  id: string,
+  approvedBy: string
+): Promise<{
+  approved_at: number;
+  approved_by: string;
+}> {
   try {
-    const result = await pool.query<Notification>(query, values);
-    return result.rows[0] || null;
-  } catch (error: unknown) {
+    if (!id || !approvedBy) {
+      throw new Error("Invalid approve notification input");
+    }
+
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}#META`;
+    const now = Date.now();
+
+    const attributesToUpdate = {
+      approved_at: now,
+      approved_by: approvedBy,
+    };
+
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+
+    return attributesToUpdate;
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "approveNotification",
       error,
-      "DB error while approving notification",
-      query,
+      "DB error while approving notification (DynamoDB)",
+      "",
       { id, approvedBy }
     );
     throw error;
@@ -423,24 +339,31 @@ export async function approveNotification(id: string, approvedBy: string) {
 }
 
 // Archive notification (soft delete)
-export async function archiveNotification(id: string) {
-  const query = `
-    UPDATE notifications 
-    SET ${C.IS_ARCHIVED} = true,
-        ${C.UPDATED_AT} = NOW()
-    WHERE ${C.ID} = $1
-    RETURNING *;
-  `;
+// Archive notification (soft delete)
+export async function archiveNotification(id: string): Promise<boolean> {
   try {
-    const result = await pool.query<Notification>(query, [id]);
-    return result.rows[0] || null;
-  } catch (error: unknown) {
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}#META`;
+    const now = Date.now();
+
+    const attributesToUpdate = {
+      is_archived: true,
+    };
+
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+
+    return true;
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "archiveNotification",
       error,
-      "DB error while archiving notification",
-      query,
+      "DB error while archiving notification (DynamoDB)",
+      "",
       { id }
     );
     throw error;
@@ -448,24 +371,30 @@ export async function archiveNotification(id: string) {
 }
 
 // Unarchive notification
-export async function unarchiveNotification(id: string) {
-  const query = `
-    UPDATE ${ALL_TABLE_NAME.NOTIFICATION}
-    SET ${C.IS_ARCHIVED} = false,
-        ${C.UPDATED_AT} = NOW()
-    WHERE ${C.ID} = $1
-    RETURNING *;
-  `;
+// Unarchive notification (restore)
+export async function unarchiveNotification(id: string): Promise<boolean> {
   try {
-    const result = await pool.query<Notification>(query, [id]);
-    return result.rows[0] || null;
-  } catch (error: unknown) {
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}#META`;
+
+    const attributesToUpdate = {
+      is_archived: false,
+    };
+
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+
+    return true;
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "unarchiveNotification",
       error,
-      "DB error while unarchiving notification",
-      query,
+      "DB error while unarchiving notification (DynamoDB)",
+      "",
       { id }
     );
     throw error;
@@ -475,91 +404,92 @@ export async function unarchiveNotification(id: string) {
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
 export async function getHomePageNotifications(): Promise<
-  Record<string, Array<{ title: string; slug: string }>>
+  Record<string, Array<{ title: string; sk: string }>>
 > {
-  // 1) Check if `is_archived` column exists (backward compatibility)
-  const columnCheckResult = await pool.query(
-    `
-    SELECT 1
-    FROM information_schema.columns
-    WHERE table_name = $1
-      AND column_name = $2
-    `,
-    [ALL_TABLE_NAME.NOTIFICATION, C.IS_ARCHIVED] // 'notifications', 'is_archived'
-  );
-  const hasIsArchived =
-    columnCheckResult.rowCount != null && columnCheckResult.rowCount > 0;
-  // 2) Build WHERE clause: if column exists, filter on it; otherwise just use approved_at
-  const whereClause = hasIsArchived
-    ? `WHERE ${C.IS_ARCHIVED} = FALSE AND approved_at IS NOT NULL`
-    : `WHERE approved_at IS NOT NULL`;
-  const query = `
-    SELECT ${C.TITLE}, ${C.SLUG}, ${C.HAS_SYLLABUS}, ${C.HAS_ADMIT_CARD}, ${C.HAS_ANSWER_KEY}, ${C.HAS_RESULT}, ${C.CATEGORY} AS category
-    FROM ${ALL_TABLE_NAME.NOTIFICATION}
-    ${whereClause}
-    ORDER BY ${C.CREATED_AT} DESC
-  `;
   try {
-    const result = await pool.query(query);
-    // 3) Group notifications by category
-    const grouped: Record<string, Array<{ title: string; slug: string }>> = {};
-    // Group notifications by primary category first, then create additional groups for notifications
-    // with specific flags (has_admit_card → "admit-card", has_syllabus → "syllabus", etc.) [web:188]
-    for (const n of result.rows) {
-      const category = n?.category || "Uncategorized";
+    const items = await fetchDynamoDB<INotification>(
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      [
+        NOTIFICATION.sk,
+        NOTIFICATION.title,
+        NOTIFICATION.category,
+        NOTIFICATION.created_at,
+        NOTIFICATION.has_admit_card,
+        NOTIFICATION.has_syllabus,
+        NOTIFICATION.has_answer_key,
+        NOTIFICATION.has_result,
+        NOTIFICATION.approved_at,
+        NOTIFICATION.approved_by,
+        NOTIFICATION.type,
+      ],
+      {
+        [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+        [NOTIFICATION.approved_by]: "admin",
+      },
+      "#type = :type AND #approved_by = :approved_by",
+      undefined,
+      false // exclude archived
+    );
 
-      // 1. Always add to primary category
-      if (!grouped[category]) grouped[category] = [];
-      grouped[category].push({
+    // Extra safety: ensure approved_at exists and is number
+    const approved = items.filter((n) => typeof n.approved_at === "number");
+
+    // Sort latest first
+    approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+
+    const grouped: Record<string, Array<{ title: string; sk: string }>> = {};
+
+    const pushWithLimit = (
+      key: string,
+      item: { title: string; sk: string },
+      limit = 10
+    ) => {
+      if (!grouped[key]) grouped[key] = [];
+      if (grouped[key].length < limit) {
+        grouped[key].push(item);
+      }
+    };
+
+    for (const n of approved) {
+      const sk = n
+        .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+        .replace("#META", "");
+
+      const baseItem = {
         title: n.title,
-        slug: n.slug,
-      });
+        sk,
+      };
 
-      // 2. Add to special categories if flags are true
+      // Primary category
+      pushWithLimit(n.category || "Uncategorized", baseItem);
+
+      // Virtual categories
       if (n.has_admit_card) {
-        if (!grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD])
-          grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD] = [];
-        grouped[NOTIFICATION_CATEGORIES.ADMIT_CARD].push({
-          title: n.title,
-          slug: n.slug,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.ADMIT_CARD, baseItem);
       }
 
       if (n.has_syllabus) {
-        if (!grouped[NOTIFICATION_CATEGORIES.SYLLABUS])
-          grouped[NOTIFICATION_CATEGORIES.SYLLABUS] = [];
-        grouped[NOTIFICATION_CATEGORIES.SYLLABUS].push({
-          title: n.title,
-          slug: n.slug,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.SYLLABUS, baseItem);
       }
 
       if (n.has_answer_key) {
-        if (!grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY])
-          grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY] = [];
-        grouped[NOTIFICATION_CATEGORIES.ANSWER_KEY].push({
-          title: n.title,
-          slug: n.slug,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.ANSWER_KEY, baseItem);
       }
 
       if (n.has_result) {
-        if (!grouped[NOTIFICATION_CATEGORIES.RESULT])
-          grouped[NOTIFICATION_CATEGORIES.RESULT] = [];
-        grouped[NOTIFICATION_CATEGORIES.RESULT].push({
-          title: n.title,
-          slug: n.slug,
-        });
+        pushWithLimit(NOTIFICATION_CATEGORIES.RESULT, baseItem);
       }
     }
+
     return grouped;
-  } catch (error: unknown) {
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "getHomePageNotifications",
       error,
-      "DB error while fetching home page notifications",
-      query,
+      "DB error while fetching home page notifications (DynamoDB)",
+      "",
       {}
     );
     throw error;
@@ -567,98 +497,103 @@ export async function getHomePageNotifications(): Promise<
 }
 
 // List notifications by category with pagination and optional search,
-// always returning only approved and non-archived records plus total count/hasMore.
 export async function getNotificationsByCategory(
   category: string,
-  page: number,
   limit: number,
+  lastEvaluatedKeySk?: string, // ONLY sk from frontend
   searchValue?: string
-): Promise<NotificationListResponse> {
-  const offset = (page - 1) * limit;
-  const whereClauses: string[] = [
-    `${C.IS_ARCHIVED} = FALSE`,
-    `${C.APPROVED_AT} IS NOT NULL`,
-  ];
-  const params: any[] = [];
-  // Normalize category once
-  const normalizedCategory = category?.toLowerCase() || "all";
-  // Special category handling
-  const specialCategoryFlags: Record<string, string> = {
-    [NOTIFICATION_CATEGORIES.ADMIT_CARD]: NOTIFICATION_COLUMNS.HAS_ADMIT_CARD,
-    [NOTIFICATION_CATEGORIES.SYLLABUS]: NOTIFICATION_COLUMNS.HAS_SYLLABUS,
-    [NOTIFICATION_CATEGORIES.ANSWER_KEY]: NOTIFICATION_COLUMNS.HAS_ANSWER_KEY,
-    [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION_COLUMNS.HAS_RESULT,
-  };
-  if (normalizedCategory !== "all") {
-    const flagColumn = specialCategoryFlags[normalizedCategory];
-    if (flagColumn) {
-      // For admit-card/syllabus/answer-key/result use boolean flag
-      whereClauses.push(`${flagColumn} = TRUE`);
-    } else {
-      // For all other categories use category column
-      whereClauses.push(`${C.CATEGORY} = $${params.length + 1}`);
-      params.push(category);
-    }
-  }
-  // Search filter
-  if (
-    searchValue &&
-    typeof searchValue === "string" &&
-    searchValue.trim() !== ""
-  ) {
-    const likeParam1 = `$${params.length + 1}`;
-    const likeParam2 = `$${params.length + 2}`;
-    whereClauses.push(
-      `(LOWER(${C.TITLE}) LIKE ${likeParam1} OR LOWER(${C.DEPARTMENT}) LIKE ${likeParam2})`
-    );
-    const pattern = `%${searchValue.toLowerCase()}%`;
-    params.push(pattern, pattern);
-  }
-  const where = whereClauses.length
-    ? `WHERE ${whereClauses.join(" AND ")}`
-    : "";
-  // Add LIMIT and OFFSET as final params
-  const limitParamIdx = params.length + 1;
-  const offsetParamIdx = params.length + 2;
-  params.push(limit, offset);
-  const notificationsSql = `
-    SELECT ${C.SLUG}, ${C.TITLE}
-    FROM ${ALL_TABLE_NAME.NOTIFICATION}
-    ${where}
-    ORDER BY ${C.CREATED_AT} DESC
-    LIMIT $${limitParamIdx} OFFSET $${offsetParamIdx}
-  `;
-  // Count query (no limit/offset)
-  const countSql = `
-    SELECT COUNT(*) AS total
-    FROM ${ALL_TABLE_NAME.NOTIFICATION}
-    ${where}
-  `;
-  const countParams = params.slice(0, -2);
+): Promise<{
+  data: Array<{ title: string; id: string }>;
+  lastEvaluatedKey?: string; // ONLY sk returned
+}> {
   try {
-    const result = await pool.query<NotificationRow>(notificationsSql, params);
-    const countResult = await pool.query<{ total: string }>(
-      countSql,
-      countParams
+    /* ================= PAGINATION ================= */
+    let lastEvaluatedKey:
+      | { pk: string; sk: string }
+      | undefined;
+    if (lastEvaluatedKeySk) {
+      // SAFETY CHECK
+      if (!lastEvaluatedKeySk.includes("#")) {
+        throw new Error("Invalid lastEvaluatedKeySk format");
+      }
+      const pkPrefix = lastEvaluatedKeySk.split("#")[0] + "#";
+      lastEvaluatedKey = {
+        pk: pkPrefix,
+        sk: lastEvaluatedKeySk,
+      };
+    }
+    const normalizedCategory = category?.toLowerCase() || "all";
+    /* ================= BASE FILTER ================= */
+    const queryFilter: IKeyValues = {
+      type: NOTIFICATION_TYPE.META,
+      approved_by: "admin",
+    };
+    let filterString = "#type=:type and #approved_by=:approved_by";
+    /* ================= CATEGORY LOGIC ================= */
+    const specialCategoryFlags: Record<string, string> = {
+      [NOTIFICATION_CATEGORIES.ADMIT_CARD]: NOTIFICATION.has_admit_card,
+      [NOTIFICATION_CATEGORIES.SYLLABUS]: NOTIFICATION.has_syllabus,
+      [NOTIFICATION_CATEGORIES.ANSWER_KEY]: NOTIFICATION.has_answer_key,
+      [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION.has_result,
+    };
+    if (normalizedCategory !== "all") {
+      const flag = specialCategoryFlags[normalizedCategory];
+      if (flag) {
+        queryFilter[flag] = true;
+        filterString += ` and ${flag}=:${flag}`;
+      } else {
+        queryFilter.category = category;
+        filterString += " and #category=:category";
+      }
+    }
+    /* ================= SEARCH ================= */
+    if (searchValue?.trim()) {
+      queryFilter.title = searchValue;
+      filterString += " and contains(title,:title)";
+    }
+    /* ================= QUERY ================= */
+    const result = await fetchDynamoDBWithLimit<INotification>(
+      ALL_TABLE_NAME.Notification,
+      limit,
+      lastEvaluatedKey,
+      [
+        NOTIFICATION.sk,
+        NOTIFICATION.title,
+        NOTIFICATION.created_at,
+        NOTIFICATION.category,
+        NOTIFICATION.has_admit_card,
+        NOTIFICATION.has_answer_key,
+        NOTIFICATION.has_result,
+        NOTIFICATION.has_syllabus,
+        NOTIFICATION.type,
+      ],
+      queryFilter,
+      filterString
     );
-    const total = parseInt(countResult.rows[0]?.total ?? "0", 10);
-    const rowCount = result.rowCount ?? 0;
-    const hasMore = offset + rowCount < total;
-
-    const data = result.rows.map((row) => ({
-      title: row.title,
-      slug: row.slug,
-    }));
-    return { data, total, page, hasMore };
-  } catch (error: unknown) {
+    /* ================= SORT ================= */
+    result.results.sort(
+      (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0)
+    );
+    /* ================= RESPONSE ================= */
+    return {
+      data: result.results.map((n) => ({
+        title: n.title,
+        id: n.sk!
+          .replace(`${TABLE_PK_MAPPER.Notification}`, "")
+          .replace("#META", ""),
+      })),
+      lastEvaluatedKey: result.lastEvaluatedKey?.sk, // ✅ ONLY sk
+    };
+  } catch (error) {
     logErrorLocation(
       "notificationService.ts",
       "getNotificationsByCategory",
       error,
-      "DB error while fetching notifications by category",
-      { notificationsSql, countSql } as any,
-      { category, page, limit, searchValue }
+      "DB error while fetching notifications by category (DynamoDB)",
+      "",
+      { category, limit, lastEvaluatedKeySk, searchValue }
     );
     throw error;
   }
 }
+
