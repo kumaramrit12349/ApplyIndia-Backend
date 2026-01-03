@@ -171,9 +171,7 @@ export async function getNotificationById(
     if (!id) {
       throw new Error("Invalid notification id");
     }
-
     const skPrefix = `${TABLE_PK_MAPPER.Notification}${id}`;
-    console.log("skPrefix", skPrefix);
     const items = await fetchDynamoDB<any>(
       ALL_TABLE_NAME.Notification,
       undefined,
@@ -181,23 +179,15 @@ export async function getNotificationById(
       undefined,
       undefined,
       undefined,
-      false,
+      undefined,
       skPrefix
     );
-
     if (!items || items.length === 0) {
       return null;
     }
-
     // Ensure META exists
     const meta = items.find((i) => i.type === NOTIFICATION_TYPE.META);
-
     if (!meta) {
-      return null;
-    }
-
-    // Optional: block archived notifications
-    if (meta.is_archived === true) {
       return null;
     }
     return buildNotificationDetail(items);

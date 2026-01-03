@@ -235,21 +235,17 @@ export async function fetchDynamoDB<T>(
         KEY_ATTRIBUTES.pk;
       expressionAttributeValues[EXPRESSION_ATTRIBUTES_VALUES.pk] =
         TABLE_PK_MAPPER[tableName];
-
       // Base KeyConditionExpression
       let keyConditionExpression =
         EXPRESSION_ATTRIBUTES_NAMES.pk +
         SPECIAL_CHARACTERS.EQUALS_COLON +
         KEY_ATTRIBUTES.pk;
-
       // ⭐ ADD begins_with(sk, skBeginsWith) SUPPORT
       if (skBeginsWith) {
         expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] =
           KEY_ATTRIBUTES.sk;
-
         expressionAttributeValues[EXPRESSION_ATTRIBUTES_VALUES.sk] =
           skBeginsWith;
-
         keyConditionExpression +=
           " AND begins_with(" +
           EXPRESSION_ATTRIBUTES_NAMES.sk +
@@ -257,7 +253,6 @@ export async function fetchDynamoDB<T>(
           EXPRESSION_ATTRIBUTES_VALUES.sk +
           ")";
       }
-
       const params: QueryCommandInput = {
         TableName: DYNAMODB_CONFIG.TABLE_NAME,
         KeyConditionExpression: keyConditionExpression,
@@ -270,12 +265,10 @@ export async function fetchDynamoDB<T>(
             ? projectionExpression.join(SPECIAL_CHARACTERS.COMMA)
             : undefined,
       };
-
       const result = await queryItemsFromDynamoDB<T>(params, includeArchived);
       if (!result) {
         return [];
       }
-
       const dataWithRelations = await getRelationalData<T>(
         result,
         relationalTables,
