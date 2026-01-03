@@ -77,30 +77,37 @@ export function buildNotificationDetail(items: any[]): any {
   return result;
 }
 
-export function toEpoch(date: string | number): number {
-  if (date === null || date === undefined) {
-    throw new Error("date is required");
+export function toEpoch(date: string | number | null | undefined): number | undefined {
+  // Allow empty / optional dates
+  if (date === null || date === undefined || date === "") {
+    return undefined;
   }
-  // ✅ Already epoch (number)
+
+  // Already epoch
   if (typeof date === "number") {
     if (!Number.isFinite(date)) {
       throw new Error(`Invalid epoch value: ${date}`);
     }
     return date;
   }
-  // ✅ String handling
+
   if (typeof date !== "string") {
     throw new Error(`Unsupported date type: ${typeof date}`);
   }
-  // Date-only → normalize to UTC midnight
+
+  // Normalize YYYY-MM-DD to UTC midnight
   const normalized = /^\d{4}-\d{2}-\d{2}$/.test(date)
     ? `${date}T00:00:00Z`
     : date;
+
   const epoch = Date.parse(normalized);
+
   if (Number.isNaN(epoch)) {
     throw new Error(`Invalid date format: ${date}`);
   }
+
   return epoch;
 }
+
 
 
