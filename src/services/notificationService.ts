@@ -147,8 +147,6 @@ export async function viewNotifications(): Promise<INotificationListItem[]> {
       ],
       { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
       "#type = :type",
-      undefined,
-      false
     );
 
     return notifications.sort((a, b) => b.created_at - a.created_at);
@@ -176,8 +174,6 @@ export async function getNotificationById(
 
     const skPrefix = `${TABLE_PK_MAPPER.Notification}${id}`;
     console.log("skPrefix", skPrefix);
-    console.log("DETAIL_VIEW_NOTIFICATION", DETAIL_VIEW_NOTIFICATION);
-
     const items = await fetchDynamoDB<any>(
       ALL_TABLE_NAME.Notification,
       undefined,
@@ -185,7 +181,7 @@ export async function getNotificationById(
       undefined,
       undefined,
       undefined,
-      false, // ✅ DO NOT FILTER is_archived
+      false,
       skPrefix
     );
 
@@ -204,7 +200,6 @@ export async function getNotificationById(
     if (meta.is_archived === true) {
       return null;
     }
-    console.log("items", items);
     return buildNotificationDetail(items);
   } catch (error) {
     logErrorLocation(

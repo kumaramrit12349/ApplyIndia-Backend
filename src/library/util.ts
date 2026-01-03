@@ -11,6 +11,7 @@ export function buildNotificationDetail(items: any[]): any {
     const sk: string = item.sk;
     if (sk.endsWith("#META")) {
       Object.assign(result, {
+        sk: item.sk,
         title: item.title,
         category: item.category,
         department: item.department,
@@ -72,6 +73,23 @@ export function buildNotificationDetail(items: any[]): any {
   return result;
 }
 
-export function toEpoch(start_date: string) {
-  throw new Error("Function not implemented.");
+export function toEpoch(date: string): number {
+  if (!date) {
+    throw new Error("date is required");
+  }
+
+  // If date-only format, force UTC start of day
+  const normalized =
+    /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? `${date}T00:00:00Z`
+      : date;
+
+  const epoch = Date.parse(normalized);
+
+  if (Number.isNaN(epoch)) {
+    throw new Error(`Invalid date format: ${date}`);
+  }
+
+  return epoch;
 }
+
