@@ -28,9 +28,6 @@ export const ARCHIVED = {
   whereClause: "(is_archived = 'false' OR is_archived IS NULL)"
 };
 
-export const TABLE_PK_MAPPER = {
-  Notification: "Notification#",
-};
 
 export const EXPRESSION_ATTRIBUTES_NAMES = {
   pk: "#pk",
@@ -72,48 +69,14 @@ export const REF_PROPERTIES = {
 };
 
 export const ALL_TABLE_NAMES = {
-  Opportunity: "Opportunity",
-  Sponsor: "Sponsor",
-  Cohort: "Cohort",
-  Skill: "Skill",
-  Eligibility: "Eligibility",
-  Badge: "Badge",
-  Reward: "Reward",
-  Learner: "Learner",
-  Panellist: "Panellist",
-  CareerAddOn: "CareerAddOn",
-  CompetitionAddOn: "CompetitionAddOn",
-  CompetitionUser: "CompetitionUser",
-  Organization: "Organization",
-  Collaboration: "Collaboration",
-  ScholarshipTransaction: "ScholarshipTransaction",
-  BandColorCode: "BandColorCode",
-  Testimonial: "Testimonial",
-  FAQ: "FAQ",
   Notification: "Notification",
-  Degree: "Degree",
-  Major: "Major",
-  WorkItem: "WorkItem",
-  WorkItemArchive: "WorkItemArchive",
-  ApproverList: "ApproverList",
-  EmailTemplate: "EmailTemplate",
-  BadgrTransaction: "BadgrTransaction",
-  ChangeCohortTransaction: "ChangeCohortTransaction",
-  DropoutTransaction: "DropoutTransaction",
-  Role: "Role",
-  Permission: "Permission",
-  Form: "Form",
-  AllTableNames: "AllTableNames",
-  NotStartedTransaction: "NotStartedTransaction",
-  ExperienceGps: "ExperienceGps",
-  ExperienceGpsBadge: "ExperienceGpsBadge",
-  AddCohortTransaction: "AddCohortTransaction",
-  CohortAllocationTransaction: "CohortAllocationTransaction",
-  ExperienceGpsBadgrTransaction: "ExperienceGpsBadgrTransaction",
-  Wish: "Wish",
-  Payment: "Payment",
-  ReasonAccRej: "ReasonAccRej",
-  Pe: "Pe"
+  Feedback: "Feedback",
+};
+
+
+export const TABLE_PK_MAPPER = {
+  Notification: "Notification#",
+  Feedback: "Feedback#",
 };
 
 export const INSERT_ITEM_MAPPER = {
