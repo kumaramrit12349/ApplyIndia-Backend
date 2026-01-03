@@ -21,6 +21,7 @@ import {
   INotification,
   INotificationListItem,
 } from "../db_schema/Notification/NotificationInterface";
+import { IKeyValues } from "../db_schema/shared/SharedInterface";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: INotification) {
@@ -512,43 +513,155 @@ export async function getHomePageNotifications(): Promise<
 
 // List notifications by category with pagination and optional search,
 // always returning only approved and non-archived records plus total count/hasMore.
+// export async function getNotificationsByCategory(
+//   category: string,
+//   limit: number,
+//   lastEvaluatedKeySk?: string, // ONLY sk from frontend
+//   searchValue?: string
+// ): Promise<{
+//   data: Array<{ title: string; id: string }>;
+//   lastEvaluatedKey?: string; // ONLY sk returned
+// }> {
+//   try {
+//     /* ================= PAGINATION ================= */
+//     let lastEvaluatedKey = lastEvaluatedKeySk
+//       ? {
+//           pk: lastEvaluatedKeySk.split("#")[0] + "#",
+//           sk: lastEvaluatedKeySk,
+//         }
+//       : undefined;
+
+//       console.log('lastEvaluatedKey', lastEvaluatedKey);
+//     const normalizedCategory = category?.toLowerCase() || "all";
+
+//     const queryFilter: IKeyValues = {
+//       // category: category,
+//       type: NOTIFICATION_TYPE.META,
+//       approved_by: "admin",
+//     }
+
+//     let filterString = "(#category=:category)" + " and (#type=:type)" + " and (#approved_by=:approved_by)";
+//     /* ================= CATEGORY LOGIC ================= */
+
+//     const specialCategoryFlags: Record<string, string> = {
+//       [NOTIFICATION_CATEGORIES.ADMIT_CARD]: NOTIFICATION.has_admit_card,
+//       [NOTIFICATION_CATEGORIES.SYLLABUS]: NOTIFICATION.has_syllabus,
+//       [NOTIFICATION_CATEGORIES.ANSWER_KEY]: NOTIFICATION.has_answer_key,
+//       [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION.has_result,
+//     };
+//     const flag = specialCategoryFlags[normalizedCategory];
+
+// if (normalizedCategory !== "all") {
+//       if (flag) {
+//         queryFilter[flag] = true;
+//         filterString += ` and (${flag}=:${flag})`;
+//       } else {
+//         queryFilter["category"] = category;
+//         filterString += " and (category=:category)";
+//       }
+//     }
+
+//     /* ================= SEARCH ================= */
+
+//     if (searchValue && searchValue.trim()) {
+//      queryFilter["title"] = searchValue.toLowerCase();
+//      filterString += " and contains(title,:title)";
+//     }
+//     /* ================= QUERY ================= */
+//     console.log('queryFilter', queryFilter);
+//     console.log('filterString', filterString);
+//     const result = await fetchDynamoDBWithLimit<INotification>(
+//       ALL_TABLE_NAME.Notification,
+//       limit,
+//       lastEvaluatedKey,
+//       [
+//         NOTIFICATION.sk, 
+//         NOTIFICATION.title, 
+//         NOTIFICATION.created_at,
+//         NOTIFICATION.approved_at,
+//         NOTIFICATION.approved_by,
+//         NOTIFICATION.category,
+//         NOTIFICATION.has_admit_card,
+//         NOTIFICATION.has_answer_key,
+//         NOTIFICATION.has_result,
+//         NOTIFICATION.has_syllabus,
+//         NOTIFICATION.type,
+//       ],
+//       queryFilter,
+//       filterString
+//     );
+
+//     /* ================= SORT ================= */
+
+//     result.results.sort(
+//       (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0)
+//     );
+
+//     /* ================= RESPONSE ================= */
+
+//     return {
+//       data: result.results.map((n) => ({
+//         title: n.title,
+//         id: n.sk!
+//           .replace(`${TABLE_PK_MAPPER.Notification}`, "")
+//           .replace("#META", ""),
+//       })),
+//       lastEvaluatedKey: result.lastEvaluatedKey?.sk, // ONLY sk
+//     };
+//   } catch (error) {
+//     logErrorLocation(
+//       "notificationService.ts",
+//       "getNotificationsByCategory",
+//       error,
+//       "DB error while fetching notifications by category (DynamoDB)",
+//       "",
+//       { category, limit, lastEvaluatedKeySk, searchValue }
+//     );
+//     throw error;
+//   }
+// }
+
+
 export async function getNotificationsByCategory(
   category: string,
   limit: number,
-  lastEvaluatedKey?: Record<string, any>,
+  lastEvaluatedKeySk?: string, // ONLY sk from frontend
   searchValue?: string
 ): Promise<{
   data: Array<{ title: string; id: string }>;
-  hasMore: boolean;
-  lastEvaluatedKey?: Record<string, any>;
+  lastEvaluatedKey?: string; // ONLY sk returned
 }> {
   try {
+    /* ================= PAGINATION ================= */
+
+    let lastEvaluatedKey:
+      | { pk: string; sk: string }
+      | undefined;
+
+    if (lastEvaluatedKeySk) {
+      // ✅ SAFETY CHECK
+      if (!lastEvaluatedKeySk.includes("#")) {
+        throw new Error("Invalid lastEvaluatedKeySk format");
+      }
+
+      const pkPrefix = lastEvaluatedKeySk.split("#")[0] + "#";
+
+      lastEvaluatedKey = {
+        pk: pkPrefix,
+        sk: lastEvaluatedKeySk,
+      };
+    }
+
     const normalizedCategory = category?.toLowerCase() || "all";
 
-    const expressionFilters: string[] = [];
-    const expressionValues: Record<string, any> = {};
-    const expressionNames: Record<string, string> = {
-      "#type": NOTIFICATION.type,
-      "#approved_by": NOTIFICATION.approved_by,
-      "#is_archived": NOTIFICATION.is_archived,
-      "#title": NOTIFICATION.title,
-      "#department": NOTIFICATION.department,
-      "#category": NOTIFICATION.category,
+    /* ================= BASE FILTER ================= */
+
+    const queryFilter: IKeyValues = {
+      type: NOTIFICATION_TYPE.META,
+      approved_by: "admin",
     };
 
-    /* ================= BASE FILTERS ================= */
-
-    // META only
-    expressionFilters.push("#type = :type");
-    expressionValues[":type"] = NOTIFICATION_TYPE.META;
-
-    // Approved only
-    expressionFilters.push("#approved_by = :approved_by");
-    expressionValues[":approved_by"] = "admin";
-
-    // Not archived
-    expressionFilters.push("#is_archived = :false");
-    expressionValues[":false"] = false;
+    let filterString = "#type=:type and #approved_by=:approved_by";
 
     /* ================= CATEGORY LOGIC ================= */
 
@@ -559,32 +672,24 @@ export async function getNotificationsByCategory(
       [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION.has_result,
     };
 
-    const flag = specialCategoryFlags[normalizedCategory];
-
     if (normalizedCategory !== "all") {
+      const flag = specialCategoryFlags[normalizedCategory];
+
       if (flag) {
-        expressionNames[`#${flag}`] = flag;
-        expressionFilters.push(`#${flag} = :true`);
-        expressionValues[":true"] = true;
+        queryFilter[flag] = true;
+        filterString += ` and ${flag}=:${flag}`;
       } else {
-        expressionFilters.push("#category = :category");
-        expressionValues[":category"] = category;
+        queryFilter.category = category;
+        filterString += " and #category=:category";
       }
     }
 
     /* ================= SEARCH ================= */
 
-    if (searchValue && searchValue.trim()) {
-      expressionFilters.push(
-        "(contains(#title, :search) OR contains(#department, :search))"
-      );
-      expressionValues[":search"] = searchValue.toLowerCase();
+    if (searchValue?.trim()) {
+      queryFilter.title = searchValue.toLowerCase();
+      filterString += " and contains(title,:title)";
     }
-
-    const filterExpression =
-      expressionFilters.length > 0
-        ? expressionFilters.join(" AND ")
-        : undefined;
 
     /* ================= QUERY ================= */
 
@@ -592,26 +697,37 @@ export async function getNotificationsByCategory(
       ALL_TABLE_NAME.Notification,
       limit,
       lastEvaluatedKey,
-      [NOTIFICATION.sk, NOTIFICATION.title, NOTIFICATION.created_at],
-      expressionValues,
-      filterExpression
+      [
+        NOTIFICATION.sk,
+        NOTIFICATION.title,
+        NOTIFICATION.created_at,
+        NOTIFICATION.category,
+        NOTIFICATION.has_admit_card,
+        NOTIFICATION.has_answer_key,
+        NOTIFICATION.has_result,
+        NOTIFICATION.has_syllabus,
+        NOTIFICATION.type,
+      ],
+      queryFilter,
+      filterString
     );
 
     /* ================= SORT ================= */
 
-    result.results.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+    result.results.sort(
+      (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0)
+    );
 
     /* ================= RESPONSE ================= */
 
     return {
       data: result.results.map((n) => ({
         title: n.title,
-        id: n
-          .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+        id: n.sk!
+          .replace(`${TABLE_PK_MAPPER.Notification}`, "")
           .replace("#META", ""),
       })),
-      hasMore: !!result.lastEvaluatedKey,
-      lastEvaluatedKey: result.lastEvaluatedKey,
+      lastEvaluatedKey: result.lastEvaluatedKey?.sk, // ✅ ONLY sk
     };
   } catch (error) {
     logErrorLocation(
@@ -620,8 +736,9 @@ export async function getNotificationsByCategory(
       error,
       "DB error while fetching notifications by category (DynamoDB)",
       "",
-      { category, limit, lastEvaluatedKey, searchValue }
+      { category, limit, lastEvaluatedKeySk, searchValue }
     );
     throw error;
   }
 }
+

@@ -109,23 +109,36 @@ router.get("/home", async (req, res) => {
 });
 
 // Group notifications by category for the HomePage (PUBLIC)
+// PUBLIC – Category + Search + Infinite Scroll
 router.get("/category/:category", async (req, res) => {
   try {
     const { category } = req.params;
-    const { searchValue } = req.query;
-    const lastEvaluatedKey = req.query.lastEvaluatedKey as any;
-    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const { searchValue, lastEvaluatedKey } = req.query;
+
+    const limit = Number(req.query.limit) || 20;
 
     const result = await getNotificationsByCategory(
       category,
       limit,
-      lastEvaluatedKey,
+      typeof lastEvaluatedKey === "string"
+        ? lastEvaluatedKey
+        : undefined,
       typeof searchValue === "string" ? searchValue : undefined
     );
-    res.json({ success: true, ...result });
+
+    res.json({
+      success: true,
+      ...result,
+    });
   } catch (err) {
-    res.status(500).json({ error: "Database error", details: String(err) });
+    res.status(500).json({
+      success: false,
+      error: "Database error",
+      details: String(err),
+    });
   }
 });
+
+
 
 export default router;

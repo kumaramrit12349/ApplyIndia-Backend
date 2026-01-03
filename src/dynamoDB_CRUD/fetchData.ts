@@ -101,69 +101,41 @@ export async function queryItemsFromDynamoDB<T>(
   }
 }
 
-export async function queryItemsWithLimitDynamoDB<
-  T extends Record<string, any>
->(
-  queryParams: QueryCommandInput,
+export async function queryItemsWithLimitDynamoDB<T>(
+  queryPrams: QueryCommandInput,
   limit: number,
-  startKey?: Record<string, any>
-): Promise<{
-  results: T[];
-  lastEvaluatedKey?: Record<string, any>;
-}> {
+  startKey: Record<string, any>
+): Promise<{ results: T[]; lastEvaluatedKey: Record<string, any> }> {
   try {
-    /* ------------------------------------
-     * 1. Ensure optional fields exist
-     * ------------------------------------ */
-    queryParams.ExpressionAttributeValues ??= {};
-    queryParams.ExpressionAttributeNames ??= {};
-    /* ------------------------------------
-     * 2. Add archived filter
-     * ------------------------------------ */
-    if (!queryParams.ExpressionAttributeValues[ARCHIVED.exprssionValue]) {
-      queryParams.ExpressionAttributeValues[ARCHIVED.exprssionValue] =
-        { BOOL: false } as AttributeValue;
-      queryParams.ExpressionAttributeNames[ARCHIVED.exprssionName] =
+    if (!queryPrams?.ExpressionAttributeValues[ARCHIVED.exprssionValue]) {
+      queryPrams.ExpressionAttributeValues[ARCHIVED.exprssionValue] =
+        false as any; // as it is required to marshalled value here but we are marshalling below
+      queryPrams.ExpressionAttributeNames[ARCHIVED.exprssionName] =
         ARCHIVED.is_archived;
     }
-    if (queryParams.FilterExpression) {
-      // queryParams.FilterExpression += ARCHIVED.filterExpression;
+    if (queryPrams?.FilterExpression) {
+      queryPrams.FilterExpression += ARCHIVED.filterExpression;
     } else {
-      queryParams.FilterExpression =
-        ARCHIVED.filterExpression.substring(4);
+      queryPrams.FilterExpression = ARCHIVED.filterExpression.substring(4);
     }
-    /* ------------------------------------
-     * 3. Marshall ExpressionAttributeValues
-     * ------------------------------------ */
-    queryParams.ExpressionAttributeValues = marshall(
-      queryParams.ExpressionAttributeValues
+    queryPrams.ExpressionAttributeValues = marshall(
+      queryPrams.ExpressionAttributeValues
     );
-    /* ------------------------------------
-     * 4. Build query params
-     * ------------------------------------ */
+    const accumulated: T[] = [];
     const params: QueryCommandInput = {
-      ...queryParams,
+      ...queryPrams,
       Limit: limit,
-      ExclusiveStartKey: startKey
-        ? marshall(startKey)
-        : undefined,
+      ExclusiveStartKey: startKey ? marshall(startKey) : undefined,
     };
-    /* ------------------------------------
-     * 5. Execute query
-     * ------------------------------------ */
-    const result: QueryCommandOutput =
-      await dynamoDBClient.send(new QueryCommand(params));
-    /* ------------------------------------
-     * 6. Unmarshall results
-     * ------------------------------------ */
-    const results: T[] = [];
-    if (result.Items) {
-      for (const item of result.Items) {
-        results.push(unmarshall(item) as T);
-      }
+    const dynamoDB = new DynamoDBClient(DynamoDBClient);
+    const result = await dynamoDB.send(new QueryCommand(params));
+    if (result?.Items) {
+      result.Items?.forEach((item) => {
+        accumulated.push(unmarshall(item) as T);
+      });
     }
     return {
-      results,
+      results: accumulated,
       lastEvaluatedKey: result.LastEvaluatedKey
         ? unmarshall(result.LastEvaluatedKey)
         : undefined,
@@ -173,13 +145,11 @@ export async function queryItemsWithLimitDynamoDB<
       "fetchData.ts",
       "queryItemsWithLimitDynamoDB",
       error,
-      "Error while querying items from DynamoDB",
-      "",
-      { queryParams, limit, startKey }
+      "Error while query items from DynamoDB",
+      `learnerSK:`,
+      { queryPrams }
     );
-
     handleErrorsAxios(error, {});
-    return { results: [] }; // TS safety (unreachable at runtime)
   }
 }
 
