@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { addFeedbackToDB } from "../services/feedbackService";
+import { addFeedbackToDB } from "../../services/public/feedbackService";
 
 const router = Router();
 

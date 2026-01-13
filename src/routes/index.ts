@@ -1,7 +1,9 @@
 import { Router, Request, Response } from "express";
 import authRoutes from "./auth";
-import notificationRouter from "./notification";
-import feedbackRoutes from "./feedback";
+import publicRoutes from "./public";
+import privateRoutes from "./private";
+
+
 
 const router = Router();
 
@@ -10,7 +12,7 @@ router.get("/", (_req: Request, res: Response) => {
 });
 
 router.use("/auth", authRoutes);
-router.use("/notification", notificationRouter);
-router.use("/feedback", feedbackRoutes);
+router.use("/public", publicRoutes);
+router.use("/api", privateRoutes);
 
 export default router;
