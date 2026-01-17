@@ -1,0 +1,134 @@
+{
+  "/Users/amritkumar/Personal/ApplyIndia/Code/ApplyIndia-Backend/serverless.yml": {
+    "versionFramework": "4.30.0",
+    "servicePath": "/Users/amritkumar/Personal/ApplyIndia/Code/ApplyIndia-Backend/serverless.yml",
+    "serviceConfigFileName": "serverless.yml",
+    "service": {
+      "service": "applyindia-backend",
+      "frameworkVersion": "4",
+      "useDotenv": true,
+      "provider": {
+        "name": "aws",
+        "runtime": "nodejs18.x",
+        "region": "ap-south-1",
+        "stage": "dev",
+        "httpApi": {
+          "authorizers": {
+            "cognitoJwtAuthorizer": {
+              "type": "jwt",
+              "identitySource": "$request.header.Authorization",
+              "issuerUrl": "https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_Od1HHnGIF",
+              "audience": "35l4mqp14qmjl5lv3hhepqq2s"
+            }
+          }
+        },
+        "versionFunctions": true
+      },
+      "functions": {
+        "public": {
+          "handler": "dist/lambda.handler",
+          "events": [
+            {
+              "httpApi": {
+                "path": "/public/{proxy+}",
+                "method": "ANY"
+              },
+              "resolvedMethod": "ANY",
+              "resolvedPath": "/public/{proxy+}"
+            }
+          ],
+          "name": "applyindia-backend-dev-public"
+        },
+        "private": {
+          "handler": "dist/lambda.handler",
+          "events": [
+            {
+              "httpApi": {
+                "path": "/api/{proxy+}",
+                "method": "ANY",
+                "authorizer": {
+                  "name": "cognitoJwtAuthorizer"
+                }
+              },
+              "resolvedMethod": "ANY",
+              "resolvedPath": "/api/{proxy+}"
+            }
+          ],
+          "name": "applyindia-backend-dev-private"
+        }
+      }
+    },
+    "provider": {
+      "name": "aws",
+      "runtime": "nodejs18.x",
+      "region": "ap-south-1",
+      "stage": "dev",
+      "httpApi": {
+        "authorizers": {
+          "cognitoJwtAuthorizer": {
+            "type": "jwt",
+            "identitySource": "$request.header.Authorization",
+            "issuerUrl": "https://cognito-idp.ap-south-1.amazonaws.com/ap-south-1_Od1HHnGIF",
+            "audience": "35l4mqp14qmjl5lv3hhepqq2s"
+          }
+        }
+      },
+      "versionFunctions": true
+    },
+    "dashboard": {
+      "isEnabledForService": false,
+      "requiredAuthentication": false,
+      "orgFeaturesInUse": null,
+      "orgObservabilityIntegrations": null,
+      "serviceAppId": null,
+      "serviceProvider": null,
+      "instanceParameters": null
+    },
+    "serviceRawFile": "service: applyindia-backend\nframeworkVersion: \"4\"\nuseDotenv: true\n\nprovider:\n  name: aws\n  runtime: nodejs18.x\n  region: ap-south-1\n  stage: dev\n\n  httpApi:\n    authorizers:\n      cognitoJwtAuthorizer:\n        type: jwt\n        identitySource: $request.header.Authorization\n        issuerUrl: https://cognito-idp.ap-south-1.amazonaws.com/${env:COGNITO_USER_POOL_ID}\n        audience:\n          - ${env:COGNITO_CLIENT_ID}\n\nfunctions:\n  public:\n    handler: dist/lambda.handler\n    events:\n      - httpApi:\n          path: /public/{proxy+}\n          method: ANY\n\n  private:\n    handler: dist/lambda.handler\n    events:\n      - httpApi:\n          path: /api/{proxy+}\n          method: ANY\n          authorizer:\n            name: cognitoJwtAuthorizer\n",
+    "command": [
+      "info"
+    ],
+    "options": {},
+    "orgId": "c5bb1993-6271-483d-924e-5d5559d003f7",
+    "orgName": "applyindia",
+    "userId": "f7kpX0nwZPc0wZtCbf",
+    "userName": "applyindia",
+    "serviceProviderAwsAccountId": "128759048071",
+    "serviceProviderAwsCfStackName": "applyindia-backend-dev",
+    "serviceProviderAwsCfStackId": "arn:aws:cloudformation:ap-south-1:128759048071:stack/applyindia-backend-dev/2a08bb50-f084-11f0-aa22-06a8523a1c35",
+    "serviceProviderAwsCfStackCreated": "2026-01-13T13:31:28.702Z",
+    "serviceProviderAwsCfStackUpdated": null,
+    "serviceProviderAwsCfStackStatus": "CREATE_COMPLETE",
+    "serviceProviderAwsCfStackOutputs": [
+      {
+        "OutputKey": "PublicLambdaFunctionQualifiedArn",
+        "OutputValue": "arn:aws:lambda:ap-south-1:128759048071:function:applyindia-backend-dev-public:1",
+        "Description": "Current Lambda function version",
+        "ExportName": "sls-applyindia-backend-dev-PublicLambdaFunctionQualifiedArn"
+      },
+      {
+        "OutputKey": "PrivateLambdaFunctionQualifiedArn",
+        "OutputValue": "arn:aws:lambda:ap-south-1:128759048071:function:applyindia-backend-dev-private:1",
+        "Description": "Current Lambda function version",
+        "ExportName": "sls-applyindia-backend-dev-PrivateLambdaFunctionQualifiedArn"
+      },
+      {
+        "OutputKey": "HttpApiId",
+        "OutputValue": "dnekxmck03",
+        "Description": "Id of the HTTP API",
+        "ExportName": "sls-applyindia-backend-dev-HttpApiId"
+      },
+      {
+        "OutputKey": "ServerlessDeploymentBucketName",
+        "OutputValue": "serverless-framework-deployments-ap-south-1-8128cd85-bbce",
+        "ExportName": "sls-applyindia-backend-dev-ServerlessDeploymentBucketName"
+      },
+      {
+        "OutputKey": "HttpApiUrl",
+        "OutputValue": "https://dnekxmck03.execute-api.ap-south-1.amazonaws.com",
+        "Description": "URL of the HTTP API",
+        "ExportName": "sls-applyindia-backend-dev-HttpApiUrl"
+      }
+    ]
+  }
+}
