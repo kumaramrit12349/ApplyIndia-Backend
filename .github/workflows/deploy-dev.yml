@@ -3,7 +3,7 @@ name: Deploy Backend (DEV)
 on:
   push:
     branches:
-      - dev
+      - devAWS
 
 jobs:
   deploy:
