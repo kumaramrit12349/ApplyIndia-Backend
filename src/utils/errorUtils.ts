@@ -1,24 +1,23 @@
-import { IErrorWithDetails } from "../@types/auth";
+import { AxiosError } from "axios";
+import { BAD_REQUEST, BAD_REQUEST_NAME, INTERNAL_SERVER_ERROR, SERVER_ERROR, TRY_AGAIN } from "../db_schema/shared/ErrorMessage";
+import { ResponseError } from "../db_schema/shared/SharedInterface";
 
 // src/utils/errorUtils.ts
-export const INTERNAL_SERVER_ERROR = 500;
-export const BAD_REQUEST = 400;
-export const BAD_REQUEST_NAME = "BadRequest";
-export const SERVER_ERROR = "Internal Server Error";
-export const INVALID_INPUT = "Invalid input data";
 
-export function createThrowError(
+
+export const createThrowError = <T>(
   code: number,
   name: string,
-  message: string,
-  details: object
-): never {
-  const error: IErrorWithDetails = new Error(message);
-  error.code = code;
-  error.name = name;
-  error.details = details;
-  throw error;
-}
+  msg: string,
+  details: T
+): ResponseError<T> => {
+  const err = new ResponseError();
+  err.code = code ?? BAD_REQUEST;
+  err.name = name ?? BAD_REQUEST_NAME;
+  err.message = msg ?? TRY_AGAIN;
+  err.details = details ?? {};
+  throw err;
+};
 
 export function logErrorLocation(
   fileName: string,
@@ -49,3 +48,20 @@ export function logErrorLocation(
   };
   console.log(logErrorObject);
 }
+
+
+export const handleErrorsAxios = <T>(
+  error: AxiosError | ResponseError<any>,
+  details: T
+) => {
+  error = error as AxiosError;
+  if (error?.response || error?.request) {
+    createThrowError(INTERNAL_SERVER_ERROR, SERVER_ERROR, TRY_AGAIN, details);
+  } else {
+    // Something happened in setting up the request that triggered an Error
+    const errCode = isNaN(Number(error.code))
+      ? BAD_REQUEST
+      : Number(error.code);
+    createThrowError(errCode, error.name, error.message, details);
+  }
+};

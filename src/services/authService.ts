@@ -7,8 +7,8 @@ import {
   ResendConfirmationCodeCommand,
   SignUpCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { RegisterRequest } from "../@types/auth";
 import { createThrowError, logErrorLocation } from "../utils/errorUtils"; // Use your utility function for errors
+import { RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 
 const cognito = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION,

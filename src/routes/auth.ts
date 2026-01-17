@@ -5,15 +5,14 @@ import {
   signInUser,
   signUpUser,
 } from "../services/authService";
-import {
-  IResponse,
-  ISignUpRes,
-  RegisterRequest,
-  IErrorWithDetails,
-} from "../@types/auth";
 import { authenticateMe, authenticateToken } from "../middlewares/authMiddleware";
+import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 
 const router = Router();
+
+router.get("/health", (_, res) => {
+  res.json({ status: "Auth service running" });
+});
 
 router.post("/signup", async (req: Request, res: Response) => {
   const data: RegisterRequest = req.body;
@@ -191,7 +190,7 @@ router.post("/confirm", async (req: Request, res: Response) => {
 });
 
 // POST /api/auth/resend-code
-router.post("/resend-code", async (req: Request, res: Response) => {
+router.post("/resend", async (req: Request, res: Response) => {
   const { email } = req.body;
 
   try {

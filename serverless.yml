@@ -1,0 +1,35 @@
+service: applyindia-backend
+frameworkVersion: "4"
+useDotenv: true
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-south-1
+  stage: dev
+
+  httpApi:
+    authorizers:
+      cognitoJwtAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: https://cognito-idp.ap-south-1.amazonaws.com/${env:COGNITO_USER_POOL_ID}
+        audience:
+          - ${env:COGNITO_CLIENT_ID}
+
+functions:
+  public:
+    handler: dist/lambda.handler
+    events:
+      - httpApi:
+          path: /public/{proxy+}
+          method: ANY
+
+  private:
+    handler: dist/lambda.handler
+    events:
+      - httpApi:
+          path: /api/{proxy+}
+          method: ANY
+          authorizer:
+            name: cognitoJwtAuthorizer
