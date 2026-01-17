@@ -1,7 +1,7 @@
 import { ulid } from "ulid";
-import { ALL_TABLE_NAMES, TABLE_PK_MAPPER } from "../db_schema/shared/SharedConstant";
-import { insertDataDynamoDB } from "../Interpreter/dynamoDB/insertCalls";
-import { logErrorLocation } from "../utils/errorUtils";
+import { ALL_TABLE_NAMES, TABLE_PK_MAPPER } from "../../db_schema/shared/SharedConstant";
+import { insertDataDynamoDB } from "../../Interpreter/dynamoDB/insertCalls";
+import { logErrorLocation } from "../../utils/errorUtils";
 
 
 export interface IFeedbackInput {
