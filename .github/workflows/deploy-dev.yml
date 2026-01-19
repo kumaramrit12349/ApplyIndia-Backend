@@ -36,4 +36,4 @@ jobs:
           COGNITO_USER_POOL_ID: ${{ secrets.DEV_COGNITO_USER_POOL_ID }}
           COGNITO_CLIENT_ID: ${{ secrets.DEV_COGNITO_CLIENT_ID }}
           DYNAMODB_TABLE_NAME: ${{ secrets.DEV_DYNAMODB_TABLE_NAME }}
-        run: serverless deploy --stage dev
+        run: serverless deploy --stage devAWS
