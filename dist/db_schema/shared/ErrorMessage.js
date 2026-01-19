@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TRY_AGAIN = exports.WRONG_PK_SK_INPUT = exports.TABLE_NAME_NOT_FOUND = exports.INVALID_INPUT = exports.SERVER_ERROR = exports.BAD_REQUEST_NAME = exports.BAD_REQUEST = exports.INTERNAL_SERVER_ERROR = void 0;
+exports.INTERNAL_SERVER_ERROR = 500;
+exports.BAD_REQUEST = 400;
+exports.BAD_REQUEST_NAME = "BadRequest";
+exports.SERVER_ERROR = "Internal Server Error";
+exports.INVALID_INPUT = "Invalid input data";
+exports.TABLE_NAME_NOT_FOUND = "Invalid Input, table name not found";
+exports.WRONG_PK_SK_INPUT = "Wrong pk or sk in input";
+exports.TRY_AGAIN = "We did not get any response from server!! Try again later";
