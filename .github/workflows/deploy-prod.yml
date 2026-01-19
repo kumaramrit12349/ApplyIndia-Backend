@@ -3,7 +3,7 @@ name: Deploy Backend (PROD)
 on:
   push:
     branches:
-      - prod
+      - prodAWS
 
 jobs:
   deploy:
@@ -36,4 +36,4 @@ jobs:
           COGNITO_USER_POOL_ID: ${{ secrets.PROD_COGNITO_USER_POOL_ID }}
           COGNITO_CLIENT_ID: ${{ secrets.PROD_COGNITO_CLIENT_ID }}
           DYNAMODB_TABLE_NAME: ${{ secrets.PROD_DYNAMODB_TABLE_NAME }}
-        run: serverless deploy --stage prod
+        run: serverless deploy --stage prodAWS
