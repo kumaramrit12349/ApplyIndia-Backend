@@ -2,26 +2,45 @@ service: applyindia-backend
 frameworkVersion: "4"
 useDotenv: true
 
+plugins:
+  - serverless-domain-manager
+
 provider:
   name: aws
   runtime: nodejs18.x
   region: ap-south-1
-  stage: dev
+  stage: ${opt:stage, 'dev'}
+
   environment:
     APP_ENV: ${self:provider.stage}
-    AWS_REGION: ap-south-1
     DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
     COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
 
   httpApi:
+    cors: true
+
     authorizers:
       cognitoJwtAuthorizer:
         type: jwt
         identitySource: $request.header.Authorization
-        issuerUrl: https://cognito-idp.ap-south-1.amazonaws.com/${env:COGNITO_USER_POOL_ID}
+        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
         audience:
           - ${env:COGNITO_CLIENT_ID}
+
+custom:
+  domains:
+    dev: dev.applyindia.online
+    prod: applyindia.online
+
+  customDomain:
+    domainName: ${self:custom.domains.${self:provider.stage}}
+    basePath: ""
+    stage: ${self:provider.stage}
+    createRoute53Record: true
+    endpointType: regional
+    apiType: http
+    securityPolicy: tls_1_2
 
 functions:
   public:
