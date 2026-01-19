@@ -7,6 +7,12 @@ provider:
   runtime: nodejs18.x
   region: ap-south-1
   stage: dev
+  environment:
+    APP_ENV: ${self:provider.stage}
+    AWS_REGION: ap-south-1
+    DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
+    COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
+    COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
 
   httpApi:
     authorizers:
