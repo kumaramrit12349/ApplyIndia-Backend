@@ -33,7 +33,7 @@ jobs:
 
       - name: Deploy DEV
         env:
-          COGNITO_USER_POOL_ID: ${{ secrets.DEV_COGNITO_USER_POOL_ID }}
-          COGNITO_CLIENT_ID: ${{ secrets.DEV_COGNITO_CLIENT_ID }}
-          DYNAMODB_TABLE_NAME: ${{ secrets.DEV_DYNAMODB_TABLE_NAME }}
-        run: serverless deploy --stage dev
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
+        run: serverless deploy --stage devAWS
