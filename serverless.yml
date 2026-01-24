@@ -11,8 +11,6 @@ package:
     - dist/**
     - node_modules/**
     - '!src/**'
-    - '!.git/**'
-    - '!*.md'
 
 provider:
   name: aws
