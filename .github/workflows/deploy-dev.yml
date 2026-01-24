@@ -49,4 +49,4 @@ jobs:
 
      # 8️⃣ REMOVE DEV STACK (RUN ONLY ONCE)
       - name: Remove DEV stack
-        run: npx serverless remove --stage dev
+        run: npx serverless@3 remove --stage dev
