@@ -3,7 +3,8 @@ frameworkVersion: "3"
 useDotenv: true
 
 plugins:
-  - serverless-domain-manager
+  # domain plugin REMOVED for dev
+  # - serverless-domain-manager
 
 package:
   patterns:
@@ -38,22 +39,6 @@ provider:
         issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
         audience:
           - ${env:COGNITO_CLIENT_ID}
-
-# ✅ SINGLE custom BLOCK (THIS FIXES EVERYTHING)
-custom:
-  domains:
-    dev: dev.applyindia.online
-    prod: applyindia.online
-
-  customDomain:
-    domainName: ${self:custom.domains.${self:provider.stage}}
-    basePath: ""                 # root mapping
-    stage: ${self:provider.stage}
-    createRoute53Record: false   # IMPORTANT
-    autoDomain: false            # IMPORTANT
-    endpointType: regional
-    apiType: http
-    securityPolicy: tls_1_2
 
 functions:
   public:
