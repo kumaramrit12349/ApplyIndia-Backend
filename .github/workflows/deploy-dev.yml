@@ -37,7 +37,7 @@ jobs:
           test -f dist/lambda.js
       # 6️⃣ Install Serverless Framework
       - name: Install Serverless
-        run: npm install -g serverless@4
+        run: npm install -g serverless@3
 
       # 7️⃣ Configure AWS credentials
       - name: Configure AWS
