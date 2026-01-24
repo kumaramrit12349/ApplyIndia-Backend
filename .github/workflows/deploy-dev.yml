@@ -48,10 +48,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-      # 8️⃣ Deploy to DEV
-      - name: Deploy DEV
-        env:
-          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
-          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
-          COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
-        run: serverless deploy --stage dev
+     # 8️⃣ REMOVE DEV STACK (RUN ONLY ONCE)
+      - name: Remove DEV stack
+        run: npx serverless remove --stage dev
