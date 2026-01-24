@@ -29,10 +29,10 @@ jobs:
       - name: Build project
         run: npm run build
 
-      # 5️⃣ Verify dist output (🔥 prevents broken deploys)
+      # 5️⃣ Verify dist output (FAILS EARLY IF BROKEN)
       - name: Verify build output
         run: |
-          echo "Listing dist directory:"
+          echo "📦 dist contents:"
           ls -R dist
           test -f dist/lambda.js
 
@@ -51,8 +51,7 @@ jobs:
       # 8️⃣ Deploy to DEV
       - name: Deploy DEV
         env:
-          APP_ENV: dev
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
           COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
           COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
-          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
         run: serverless deploy --stage dev
