@@ -11,6 +11,9 @@ provider:
   region: ap-south-1
   stage: ${opt:stage, 'dev'}
 
+  deploymentBucket:
+    name: applyindia-serverless-deployments-ap-south-1
+
   environment:
     APP_ENV: ${self:provider.stage}
     DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
