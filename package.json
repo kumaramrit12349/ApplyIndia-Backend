@@ -2,7 +2,6 @@
   "name": "applyindia-backend",
   "version": "1.0.0",
   "private": true,
-
   "scripts": {
     "start": "dotenv -e src/env/dev.env -- nodemon src/server.ts",
     "build": "tsc",
@@ -10,35 +9,32 @@
     "remove:dev": "npx serverless@3 remove --stage dev",
     "start:prod": "node dist/lambda.js"
   },
-
   "dependencies": {
-    "express": "^5.2.1",
-    "cors": "^2.8.5",
-    "helmet": "^8.1.0",
-    "morgan": "^1.10.1",
-    "cookie-parser": "^1.4.7",
-    "dotenv": "^17.2.3",
-    "serverless-http": "^4.0.0",
-
+    "@aws-sdk/client-cognito-identity-provider": "^3.896.0",
     "@aws-sdk/client-dynamodb": "^3.966.0",
     "@aws-sdk/lib-dynamodb": "^3.958.0",
-    "@aws-sdk/client-cognito-identity-provider": "^3.896.0",
+    "axios": "^1.13.2",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "http-status-codes": "^2.3.0",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^3.2.0",
-    "axios": "^1.13.2",
+    "morgan": "^1.10.1",
+    "serverless-http": "^4.0.0",
     "ulid": "^3.0.2"
   },
-
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "ts-node": "^10.9.2",
-    "nodemon": "^3.1.11",
-    "dotenv-cli": "^11.0.0",
-
-    "@types/node": "^18.19.0",
-    "@types/express": "^5.0.6",
-    "@types/cors": "^2.8.19",
     "@types/cookie-parser": "^1.4.10",
-    "@types/morgan": "^1.9.10"
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/morgan": "^1.9.10",
+    "@types/node": "^18.19.0",
+    "dotenv-cli": "^11.0.0",
+    "nodemon": "^3.1.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }
