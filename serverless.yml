@@ -5,6 +5,15 @@ useDotenv: true
 plugins:
   - serverless-domain-manager
 
+# MUST BE TOP-LEVEL
+package:
+  patterns:
+    - dist/**
+    - node_modules/**
+    - '!src/**'
+    - '!.git/**'
+    - '!*.md'
+
 provider:
   name: aws
   runtime: nodejs18.x
@@ -15,15 +24,14 @@ provider:
     name: applyindia-serverless-deployments-ap-south-1
 
   environment:
-    APP_ENV: ${self:provider.stage}   # dev / prod
-    RUNTIME_ENV: lambda               # THIS IS THE KEY
+    APP_ENV: ${self:provider.stage}
+    RUNTIME_ENV: lambda
     DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
     COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
 
   httpApi:
     cors: true
-
     authorizers:
       cognitoJwtAuthorizer:
         type: jwt
