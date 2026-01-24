@@ -6,8 +6,8 @@
     "start": "dotenv -e src/env/dev.env -- nodemon src/server.ts",
     "start:debug": "dotenv -e src/env/dev.env -- node --inspect=9229 -r ts-node/register src/server.ts",
     "build": "tsc",
-    "deploy": "npm run build && serverless deploy",
-    "start:prod": "dotenv -e src/env/prod.env -- node dist/server.js",
+    "deploy:dev": "npm run build && serverless deploy --stage dev",
+    "start:prod": "dotenv -e src/env/prod.env -- node dist/lambda.js",
     "test": "jest"
   },
   "keywords": [],

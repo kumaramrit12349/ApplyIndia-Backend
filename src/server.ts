@@ -1,11 +1,11 @@
 import app from "./app";
 import { DYNAMODB_CONFIG, ENV } from "./config/env";
 
-app.listen(ENV.PORT, () => {
-  if (!DYNAMODB_CONFIG.TABLE_NAME) {
-    throw new Error("DYNAMODB_TABLE_NAME is not defined");
-  }
-  if (ENV.APP_ENV !== "prod") {
+if (ENV.RUNTIME_ENV !== "lambda") {
+  app.listen(ENV.PORT, () => {
+    if (!DYNAMODB_CONFIG.TABLE_NAME) {
+      throw new Error("DYNAMODB_TABLE_NAME is not defined");
+    }
     console.log(`Server running on http://localhost:${ENV.PORT}`);
-  }
-});
+  });
+}

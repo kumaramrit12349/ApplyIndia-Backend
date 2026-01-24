@@ -15,7 +15,8 @@ provider:
     name: applyindia-serverless-deployments-ap-south-1
 
   environment:
-    APP_ENV: ${self:provider.stage}
+    APP_ENV: ${self:provider.stage}   # dev / prod
+    RUNTIME_ENV: lambda               # THIS IS THE KEY
     DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
     COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
