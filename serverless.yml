@@ -45,6 +45,7 @@ custom:
     dev: dev.applyindia.online
     prod: applyindia.online
 
+custom:
   customDomain:
     domainName: ${self:custom.domains.${self:provider.stage}}
     basePath: ""
@@ -53,6 +54,7 @@ custom:
     endpointType: regional
     apiType: http
     securityPolicy: tls_1_2
+    autoDomain: false 
 
 functions:
   public:
