@@ -47,13 +47,13 @@ custom:
 
   customDomain:
     domainName: ${self:custom.domains.${self:provider.stage}}
-    basePath: ""
+    basePath: ""                 # root mapping
     stage: ${self:provider.stage}
-    createRoute53Record: true
+    createRoute53Record: false   # IMPORTANT
+    autoDomain: false            # IMPORTANT
     endpointType: regional
     apiType: http
     securityPolicy: tls_1_2
-    autoDomain: false   # reuse existing mapping
 
 functions:
   public:
