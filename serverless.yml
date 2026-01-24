@@ -3,7 +3,7 @@ frameworkVersion: "3"
 useDotenv: true
 
 plugins:
-  # domain plugin REMOVED for dev
+  # Domain plugin intentionally disabled for dev
   # - serverless-domain-manager
 
 package:
@@ -23,6 +23,9 @@ provider:
   deploymentBucket:
     name: applyindia-serverless-deployments-ap-south-1
 
+  ################################
+  # ✅ ENVIRONMENT VARIABLES
+  ################################
   environment:
     APP_ENV: ${self:provider.stage}
     RUNTIME_ENV: lambda
@@ -30,6 +33,26 @@ provider:
     COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
 
+  ################################
+  # ✅ IAM PERMISSIONS (FIXES 500)
+  ################################
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:GetItem
+            - dynamodb:Scan
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+          Resource:
+            - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}/index/*
+
+  ################################
+  # ✅ HTTP API + COGNITO
+  ################################
   httpApi:
     cors: true
     authorizers:
@@ -40,6 +63,9 @@ provider:
         audience:
           - ${env:COGNITO_CLIENT_ID}
 
+################################
+# ✅ FUNCTIONS
+################################
 functions:
   public:
     handler: dist/lambda.handler
