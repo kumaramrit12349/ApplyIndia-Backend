@@ -5,7 +5,6 @@ useDotenv: true
 plugins:
   - serverless-domain-manager
 
-# MUST BE TOP-LEVEL
 package:
   patterns:
     - dist/**
@@ -40,12 +39,12 @@ provider:
         audience:
           - ${env:COGNITO_CLIENT_ID}
 
+# ✅ SINGLE custom BLOCK (THIS FIXES EVERYTHING)
 custom:
   domains:
     dev: dev.applyindia.online
     prod: applyindia.online
 
-custom:
   customDomain:
     domainName: ${self:custom.domains.${self:provider.stage}}
     basePath: ""
@@ -54,7 +53,7 @@ custom:
     endpointType: regional
     apiType: http
     securityPolicy: tls_1_2
-    autoDomain: false 
+    autoDomain: false   # reuse existing mapping
 
 functions:
   public:
