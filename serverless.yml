@@ -82,3 +82,10 @@ functions:
           method: ANY
           authorizer:
             name: cognitoJwtAuthorizer
+
+  auth:
+    handler: dist/lambda.handler
+    events:
+      - httpApi:
+          path: /auth/{proxy+}
+          method: ANY
