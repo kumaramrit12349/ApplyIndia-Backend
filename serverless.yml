@@ -1,22 +1,71 @@
 service: applyindia-backend
-frameworkVersion: "4"
+frameworkVersion: "3"
 useDotenv: true
+
+plugins:
+  # Domain plugin intentionally disabled for dev
+  # - serverless-domain-manager
+
+package:
+  patterns:
+    - dist/**
+    - node_modules/**
+    - '!src/**'
+    - '!.git/**'
+    - '!*.md'
 
 provider:
   name: aws
   runtime: nodejs18.x
   region: ap-south-1
-  stage: dev
+  stage: ${opt:stage, 'dev'}
 
+  deploymentBucket:
+    name: applyindia-serverless-deployments-ap-south-1
+
+  ################################
+  # ✅ ENVIRONMENT VARIABLES
+  ################################
+  environment:
+    APP_ENV: ${self:provider.stage}
+    RUNTIME_ENV: lambda
+    DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
+    COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
+    COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
+
+  ################################
+  # ✅ IAM PERMISSIONS (FIXES 500)
+  ################################
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:Query
+            - dynamodb:GetItem
+            - dynamodb:Scan
+            - dynamodb:PutItem
+            - dynamodb:UpdateItem
+          Resource:
+            - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}
+            - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}/index/*
+
+  ################################
+  # ✅ HTTP API + COGNITO
+  ################################
   httpApi:
+    cors: true
     authorizers:
       cognitoJwtAuthorizer:
         type: jwt
         identitySource: $request.header.Authorization
-        issuerUrl: https://cognito-idp.ap-south-1.amazonaws.com/${env:COGNITO_USER_POOL_ID}
+        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
         audience:
           - ${env:COGNITO_CLIENT_ID}
 
+################################
+# ✅ FUNCTIONS
+################################
 functions:
   public:
     handler: dist/lambda.handler

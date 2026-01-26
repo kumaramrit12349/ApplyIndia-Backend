@@ -1,18 +1,14 @@
 {
-  "name": "regularapplication-backend",
+  "name": "applyindia-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "private": true,
   "scripts": {
     "start": "dotenv -e src/env/dev.env -- nodemon src/server.ts",
-    "start:debug": "dotenv -e src/env/dev.env -- node --inspect=9229 -r ts-node/register src/server.ts",
     "build": "tsc",
-    "start:prod": "dotenv -e src/env/prod.env -- node dist/server.js",
-    "test": "jest"
+    "deploy:dev": "npm run build && npx serverless@3 deploy --stage dev",
+    "remove:dev": "npx serverless@3 remove --stage dev",
+    "start:prod": "node dist/lambda.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.896.0",
     "@aws-sdk/client-dynamodb": "^3.966.0",
@@ -34,11 +30,11 @@
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
-    "@types/node": "^24.10.7",
+    "@types/node": "^18.19.0",
     "dotenv-cli": "^11.0.0",
     "nodemon": "^3.1.11",
+    "serverless-domain-manager": "^8.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

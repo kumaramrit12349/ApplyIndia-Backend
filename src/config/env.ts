@@ -2,6 +2,7 @@ export const ENV = {
   APP_ENV: process.env.APP_ENV || "dev",
   NODE_ENV: process.env.NODE_ENV || "development",
   PORT: Number(process.env.PORT) || 5000,
+  RUNTIME_ENV: process.env.RUNTIME_ENV,
 };
 
 export const AWS_CONFIG = {

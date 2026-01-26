@@ -10,43 +10,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout code
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node.js
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "npm"
 
-      # 3️⃣ Install dependencies
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+      - run: npm run build
 
-      # 4️⃣ Build TypeScript (MANDATORY)
-      - name: Build project
-        run: npm run build
-
-      # 5️⃣ Verify dist output (FAILS EARLY IF BROKEN)
-      - name: Verify build output
+      - name: Verify build
         run: |
-          echo "📦 dist contents:"
-          ls -R dist
+          ls dist
           test -f dist/lambda.js
-      # 6️⃣ Install Serverless Framework
-      - name: Install Serverless
-        run: npm install -g serverless@4
 
-      # 7️⃣ Configure AWS credentials
-      - name: Configure AWS
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ap-south-1
 
-     # 8️⃣ REMOVE DEV STACK (RUN ONLY ONCE)
-      - name: Remove DEV stack
-        run: npx serverless remove --stage dev
+      - name: Deploy
+        env:
+          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+        run: npx serverless@3 deploy --stage dev

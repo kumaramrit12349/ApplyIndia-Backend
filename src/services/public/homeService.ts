@@ -21,6 +21,7 @@ export async function getHomePageNotifications(): Promise<
   Record<string, Array<{ title: string; sk: string }>>
 > {
   try {
+    console.log('hre-111111111111111');
     const items = await fetchDynamoDB<INotification>(
       ALL_TABLE_NAME.Notification,
       undefined,
@@ -45,6 +46,7 @@ export async function getHomePageNotifications(): Promise<
       undefined,
       false // exclude archived
     );
+    console.log('items', items);
 
     // Extra safety: ensure approved_at exists and is number
     const approved = items.filter((n) => typeof n.approved_at === "number");
