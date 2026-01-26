@@ -100,11 +100,3 @@ functions:
           method: ANY
           authorizer:
             name: cognitoJwtAuthorizer
-
-  # 🔥 REQUIRED: explicit OPTIONS for /api/* (NO AUTH)
-  apiOptions:
-    handler: dist/lambda.handler
-    events:
-      - httpApi:
-          path: /api/{proxy+}
-          method: OPTIONS
