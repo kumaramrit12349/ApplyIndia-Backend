@@ -64,7 +64,7 @@ provider:
         - PATCH
         - DELETE
         - OPTIONS
-      allowCredentials: true
+      allowCredentials: false   # ✅ CORRECT for Bearer tokens
 
     authorizers:
       cognitoJwtAuthorizer:
@@ -101,10 +101,10 @@ functions:
           authorizer:
             name: cognitoJwtAuthorizer
 
- # 🔥 THIS IS THE FIX
-  options:
+  # 🔥 REQUIRED: explicit OPTIONS for /api/* (NO AUTH)
+  apiOptions:
     handler: dist/lambda.handler
     events:
       - httpApi:
-          path: /{proxy+}
+          path: /api/{proxy+}
           method: OPTIONS
