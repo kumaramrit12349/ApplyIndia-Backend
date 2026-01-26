@@ -2,10 +2,6 @@ service: applyindia-backend
 frameworkVersion: "3"
 useDotenv: true
 
-plugins:
-  # Domain plugin intentionally disabled for dev
-  # - serverless-domain-manager
-
 package:
   patterns:
     - dist/**
@@ -34,7 +30,7 @@ provider:
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
 
   ################################
-  # ✅ IAM PERMISSIONS (FIXES 500)
+  # ✅ IAM PERMISSIONS
   ################################
   iam:
     role:
@@ -51,10 +47,25 @@ provider:
             - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}/index/*
 
   ################################
-  # ✅ HTTP API + COGNITO
+  # ✅ HTTP API + CORS + COGNITO
   ################################
   httpApi:
-    cors: true
+    cors:
+      allowedOrigins:
+        - https://applyindia.online
+        - https://dev.applyindia.online
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowCredentials: true
+
     authorizers:
       cognitoJwtAuthorizer:
         type: jwt
@@ -74,6 +85,13 @@ functions:
           path: /public/{proxy+}
           method: ANY
 
+  auth:
+    handler: dist/lambda.handler
+    events:
+      - httpApi:
+          path: /auth/{proxy+}
+          method: ANY
+
   private:
     handler: dist/lambda.handler
     events:
@@ -82,10 +100,3 @@ functions:
           method: ANY
           authorizer:
             name: cognitoJwtAuthorizer
-
-  auth:
-    handler: dist/lambda.handler
-    events:
-      - httpApi:
-          path: /auth/{proxy+}
-          method: ANY
