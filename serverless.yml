@@ -100,3 +100,11 @@ functions:
           method: ANY
           authorizer:
             name: cognitoJwtAuthorizer
+
+ # 🔥 THIS IS THE FIX
+  options:
+    handler: dist/lambda.handler
+    events:
+      - httpApi:
+          path: /{proxy+}
+          method: OPTIONS
