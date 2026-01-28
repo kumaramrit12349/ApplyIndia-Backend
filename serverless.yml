@@ -92,12 +92,12 @@ functions:
           path: /auth/{proxy+}
           method: ANY
 
-  # private:
-  #   handler: dist/lambda.handler
-  #   events:
-  #     - httpApi:
-  #         path: /api/{proxy+}
-  #         method: ANY
+  private:
+    handler: dist/lambda.handler
+    events:
+      - httpApi:
+          path: /api/{proxy+}
+          method: ANY
 
           # authorizer:
           #   name: cognitoJwtAuthorizer
