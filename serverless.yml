@@ -66,13 +66,13 @@ provider:
         - OPTIONS
       allowCredentials: false   # ✅ CORRECT for Bearer tokens
 
-    authorizers:
-      cognitoJwtAuthorizer:
-        type: jwt
-        identitySource: $request.header.Authorization
-        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
-        audience:
-          - ${env:COGNITO_CLIENT_ID}
+    # authorizers:
+    #   cognitoJwtAuthorizer:
+    #     type: jwt
+    #     identitySource: $request.header.Authorization
+    #     issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
+    #     audience:
+    #       - ${env:COGNITO_CLIENT_ID}
 
 ################################
 # ✅ FUNCTIONS
@@ -98,5 +98,5 @@ functions:
       - httpApi:
           path: /api/{proxy+}
           method: ANY
-          authorizer:
-            name: cognitoJwtAuthorizer
+          # authorizer:
+          #   name: cognitoJwtAuthorizer
