@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { addCompleteNotification, approveNotification, archiveNotification, editCompleteNotification, getNotificationById, unarchiveNotification, viewNotifications } from "../../services/private/notificationService";
+import { authenticateTokenAndEmail } from "../../middlewares/authMiddleware";
 
 const router = Router();
+router.use(authenticateTokenAndEmail);
 
 
 

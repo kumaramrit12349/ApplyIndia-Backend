@@ -33,7 +33,7 @@ export const authenticateToken = (req: any, res: any, next: any) => {
       }
       req.user = decoded;
       next();
-    }
+    },
   );
 };
 
@@ -55,34 +55,22 @@ export const authenticateMe = (req: any, res: any, next: any) => {
       }
       req.user = decoded;
       next();
-    }
+    },
   );
 };
 
-const ALLOWED_EMAILS = [
- "support@applyindia.online",
+const ALLOWED_SUB = ["91539dea-c071-70a1-f14c-e99807a1d727"];
 
-];
-
-const isEmailAllowed = (
-  email: string | string[] | undefined
-): boolean => {
-  if (!email) return false;
-
-  if (Array.isArray(email)) {
-    return email.some(e => ALLOWED_EMAILS.includes(e));
-  }
-
-  return ALLOWED_EMAILS.includes(email);
+const isSubAllowed = (sub: string): boolean => {
+  if (!sub) return false;
+  return ALLOWED_SUB.includes(sub);
 };
 
 export const authenticateTokenAndEmail = (req: any, res: any, next: any) => {
   const accessToken = req?.cookies?.accessToken;
-
   if (!accessToken) {
     return res.status(401).json({ error: "Access denied" });
   }
-
   jwt.verify(
     accessToken,
     getKey,
@@ -92,15 +80,11 @@ export const authenticateTokenAndEmail = (req: any, res: any, next: any) => {
         console.error("JWT verify error (accessToken):", err);
         return res.status(403).json({ error: "Invalid token" });
       }
-
-      // 🔐 EMAIL AUTHORIZATION (string | string[])
-      if (!isEmailAllowed(decoded?.email)) {
+      if (!isSubAllowed(decoded?.sub)) {
         return res.status(403).json({ error: "You need Admin Access for it!" });
       }
-
       req.user = decoded;
       next();
-    }
+    },
   );
 };
-
