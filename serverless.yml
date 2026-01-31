@@ -2,10 +2,6 @@ service: applyindia-backend
 frameworkVersion: "3"
 useDotenv: true
 
-plugins:
-  # Domain plugin intentionally disabled for dev
-  # - serverless-domain-manager
-
 package:
   patterns:
     - dist/**
@@ -34,7 +30,7 @@ provider:
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
 
   ################################
-  # ✅ IAM PERMISSIONS (FIXES 500)
+  # ✅ IAM PERMISSIONS
   ################################
   iam:
     role:
@@ -51,17 +47,32 @@ provider:
             - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}/index/*
 
   ################################
-  # ✅ HTTP API + COGNITO
+  # ✅ HTTP API + CORS + COGNITO
   ################################
   httpApi:
-    cors: true
-    authorizers:
-      cognitoJwtAuthorizer:
-        type: jwt
-        identitySource: $request.header.Authorization
-        issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
-        audience:
-          - ${env:COGNITO_CLIENT_ID}
+    cors:
+      allowedOrigins:
+        - https://applyindia.online
+        - https://dev.applyindia.online
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowCredentials: true   # ✅ CORRECT for Bearer tokens
+
+    # authorizers:
+    #   cognitoJwtAuthorizer:
+    #     type: jwt
+    #     identitySource: $request.header.Authorization
+    #     issuerUrl: https://cognito-idp.${self:provider.region}.amazonaws.com/${env:COGNITO_USER_POOL_ID}
+    #     audience:
+    #       - ${env:COGNITO_CLIENT_ID}
 
 ################################
 # ✅ FUNCTIONS
@@ -74,11 +85,19 @@ functions:
           path: /public/{proxy+}
           method: ANY
 
+  auth:
+    handler: dist/lambda.handler
+    events:
+      - httpApi:
+          path: /auth/{proxy+}
+          method: ANY
+
   private:
     handler: dist/lambda.handler
     events:
       - httpApi:
           path: /api/{proxy+}
           method: ANY
-          authorizer:
-            name: cognitoJwtAuthorizer
+
+          # authorizer:
+          #   name: cognitoJwtAuthorizer
