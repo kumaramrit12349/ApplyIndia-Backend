@@ -66,7 +66,6 @@ export async function fetchDynamoDB<T>(
           KEY_ATTRIBUTES.sk;
         projectionExpression.push(EXPRESSION_ATTRIBUTES_NAMES.sk);
       }
-
       attributesToGet?.forEach((item) => {
         if (item.charAt(0) == item.charAt(0).toUpperCase()) {
           if (
@@ -143,7 +142,6 @@ export async function fetchDynamoDB<T>(
     relationalAttributesToGet = relationalAttributesToGet?.filter(
       (item, index) => relationalAttributesToGet?.indexOf(item) === index
     );
-
     if (!relationalAttributesToGet?.includes(KEY_ATTRIBUTES.pk)) {
       relationalAttributesToGet.push(KEY_ATTRIBUTES.pk);
     }
@@ -291,7 +289,6 @@ export async function fetchDynamoDB<T>(
         filterString,
       }
     );
-
     handleErrorsAxios(error, {});
     return []; // TS safety
   }
@@ -310,14 +307,12 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
     if (!pkValue) {
       throw new Error(TABLE_NAME_NOT_FOUND);
     }
-
     const expressionAttributeNames: Record<string, string> = {};
     const expressionAttributeValues: IKeyValues = {};
     const projectionExpression: string[] = [];
 
     let relationalTables: string[] = [];
     let relationalAttributesToGet: string[] = [];
-
     /* ------------------------------------
      * 1. Projection handling
      * ------------------------------------ */
@@ -327,23 +322,19 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
           KEY_ATTRIBUTES.pk;
         projectionExpression.push(EXPRESSION_ATTRIBUTES_NAMES.pk);
       }
-
       if (!attributesToGet.includes(KEY_ATTRIBUTES.sk)) {
         expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] =
           KEY_ATTRIBUTES.sk;
         projectionExpression.push(EXPRESSION_ATTRIBUTES_NAMES.sk);
       }
-
       for (const item of attributesToGet) {
         if (item[0] === item[0].toUpperCase()) {
           const [table, attr] = item.split("/");
-
           if (table && !relationalTables.includes(table)) {
             relationalTables.push(table);
             expressionAttributeNames[`#${table}`] = table;
             projectionExpression.push(`#${table}`);
           }
-
           if (attr === "*") {
             const relationalTable =
               table as keyof typeof RELATIONAL_TABLES_PROPERTIES;
@@ -359,7 +350,6 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
         }
       }
     }
-
     /* ------------------------------------
      * 2. De-dup & safety
      * ------------------------------------ */
@@ -367,14 +357,12 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
     relationalAttributesToGet = [
       ...new Set(relationalAttributesToGet.filter(Boolean)),
     ];
-
     if (!relationalAttributesToGet.includes(KEY_ATTRIBUTES.pk)) {
       relationalAttributesToGet.push(KEY_ATTRIBUTES.pk);
     }
     if (!relationalAttributesToGet.includes(KEY_ATTRIBUTES.sk)) {
       relationalAttributesToGet.push(KEY_ATTRIBUTES.sk);
     }
-
     /* ------------------------------------
      * 3. Filters
      * ------------------------------------ */
@@ -386,14 +374,12 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
         expressionAttributeValues[`:${safeKey}`] = value;
       }
     }
-
     /* ------------------------------------
      * 4. PK condition
      * ------------------------------------ */
     expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] =
       KEY_ATTRIBUTES.pk;
     expressionAttributeValues[EXPRESSION_ATTRIBUTES_VALUES.pk] = pkValue;
-
     const params: QueryCommandInput = {
       TableName: DYNAMODB_CONFIG.TABLE_NAME,
       KeyConditionExpression: `${EXPRESSION_ATTRIBUTES_NAMES.pk} = ${EXPRESSION_ATTRIBUTES_VALUES.pk}`,
@@ -405,7 +391,6 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
           ? projectionExpression.join(",")
           : undefined,
     };
-
     /* ------------------------------------
      * 5. Query with pagination
      * ------------------------------------ */
@@ -414,13 +399,11 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
       limit,
       startKey
     );
-
     const dataWithRelations = await getRelationalData<T>(
       result.results,
       relationalTables,
       relationalAttributesToGet
     );
-
     return {
       results: dataWithRelations,
       lastEvaluatedKey: result.lastEvaluatedKey,
@@ -441,7 +424,6 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
         filterString,
       }
     );
-
     handleErrorsAxios(error, {});
     return { results: [] }; // TS safety
   }

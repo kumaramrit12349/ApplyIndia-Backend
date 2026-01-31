@@ -28,7 +28,6 @@ export const ARCHIVED = {
   whereClause: "(is_archived = 'false' OR is_archived IS NULL)"
 };
 
-
 export const EXPRESSION_ATTRIBUTES_NAMES = {
   pk: "#pk",
   sk: "#sk",
@@ -55,7 +54,6 @@ export const SPECIAL_CHARACTERS = {
   UNDER_SCORE: "_",
 };
 
-
 export const REF_PROPERTIES = {
   relation_id: "relation_id",
   assigned_cohort: "assigned_cohort",
@@ -72,7 +70,6 @@ export const ALL_TABLE_NAMES = {
   Notification: "Notification",
   Feedback: "Feedback",
 };
-
 
 export const TABLE_PK_MAPPER = {
   Notification: "Notification#",

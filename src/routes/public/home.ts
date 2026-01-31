@@ -10,7 +10,6 @@ const router = Router();
 /******************************************************************************
  *                            PUBLIC ROUTES
  ******************************************************************************/
-
 // Home page notifications
 router.get("/home", async (_req, res) => {
   try {
@@ -30,14 +29,12 @@ router.get("/category/:category", async (req, res) => {
     const { category } = req.params;
     const { searchValue, lastEvaluatedKey } = req.query;
     const limit = Number(req.query.limit) || 20;
-
     const result = await getNotificationsByCategory(
       category,
       limit,
       typeof lastEvaluatedKey === "string" ? lastEvaluatedKey : undefined,
       typeof searchValue === "string" ? searchValue : undefined
     );
-
     res.json({
       success: true,
       ...result,

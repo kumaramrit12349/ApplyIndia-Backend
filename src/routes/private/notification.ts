@@ -5,8 +5,6 @@ import { authenticateTokenAndEmail } from "../../middlewares/authMiddleware";
 const router = Router();
 router.use(authenticateTokenAndEmail);
 
-
-
 /******************************************************************************
  *                            ADMIN ROUTES
  *        (Protected by Cognito Authorizer at API Gateway)

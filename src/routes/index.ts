@@ -3,8 +3,6 @@ import authRoutes from "./auth";
 import publicRoutes from "./public";
 import privateRoutes from "./private";
 
-
-
 const router = Router();
 
 router.get("/", (_req: Request, res: Response) => {

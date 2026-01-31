@@ -6,6 +6,6 @@ import feedbackRoutes from "./feedback"
 const router = Router();
 
 router.use("/notification", homeRoutes);
-router.use(feedbackRoutes);
+router.use("/feedback", feedbackRoutes);
 
 export default router;

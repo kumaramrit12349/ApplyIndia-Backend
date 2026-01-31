@@ -5,7 +5,7 @@ import {
   signInUser,
   signUpUser,
 } from "../services/authService";
-import { authenticateMe, authenticateToken } from "../middlewares/authMiddleware";
+import { authenticateMe } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 
 const router = Router();
@@ -52,7 +52,6 @@ router.post("/signin", async (req: Request, res: Response) => {
         data: {},
       });
     }
-
     const tokens = await signInUser(email, password);
     if (!tokens || !tokens.AccessToken) {
       return res.status(401).json({
@@ -62,9 +61,7 @@ router.post("/signin", async (req: Request, res: Response) => {
         data: {},
       });
     }
-
     const isProd = process.env.NODE_ENV === "production";
-
     // Access token cookie (for API auth)
     res.cookie("accessToken", tokens.AccessToken, {
       httpOnly: true,
@@ -73,7 +70,6 @@ router.post("/signin", async (req: Request, res: Response) => {
       maxAge: 60 * 60 * 1000,
       path: "/",
     });
-
     // ID token cookie (for /auth/me profile info)
     if (tokens.IdToken) {
       res.cookie("idToken", tokens.IdToken, {
@@ -84,7 +80,6 @@ router.post("/signin", async (req: Request, res: Response) => {
         path: "/",
       });
     }
-
     // Optional refresh token
     if (tokens.RefreshToken) {
       res.cookie("refreshToken", tokens.RefreshToken, {
@@ -95,7 +90,6 @@ router.post("/signin", async (req: Request, res: Response) => {
         path: "/",
       });
     }
-
     const resData: IResponse<{}> = {
       status: 200,
       success: true,
@@ -107,7 +101,6 @@ router.post("/signin", async (req: Request, res: Response) => {
     const error = err as IErrorWithDetails;
     let status = 400;
     let message = error.message || "Login failed";
-
     if (error.name === "NotAuthorizedException") {
       status = 401;
       message = "Invalid email or password";
@@ -118,7 +111,6 @@ router.post("/signin", async (req: Request, res: Response) => {
       status = 404;
       message = "User does not exist";
     }
-
     const errData: IResponse<{}> = {
       status,
       success: false,
@@ -132,7 +124,6 @@ router.post("/signin", async (req: Request, res: Response) => {
 
 router.get("/me", authenticateMe, (req: Request, res: Response) => {
   const user = (req as any).user;
-
   return res.json({
     success: true,
     user: {
@@ -155,10 +146,8 @@ router.post("/logout", (req: Request, res: Response) => {
 // POST /api/auth/confirm
 router.post("/confirm", async (req: Request, res: Response) => {
   const { email, code } = req.body;
-
   try {
     await confirmSignUp(email, code);
-
     return res.status(200).json({
       status: 200,
       success: true,
@@ -168,7 +157,6 @@ router.post("/confirm", async (req: Request, res: Response) => {
   } catch (error: any) {
     let status = 400;
     let message = error.message || "Failed to verify account";
-
     if (error.name === "CodeMismatchException") {
       message = "Invalid verification code.";
     } else if (error.name === "ExpiredCodeException") {
@@ -179,7 +167,6 @@ router.post("/confirm", async (req: Request, res: Response) => {
     } else if (error.name === "NotAuthorizedException") {
       message = "User is already confirmed.";
     }
-
     return res.status(status).json({
       status,
       success: false,
@@ -192,10 +179,8 @@ router.post("/confirm", async (req: Request, res: Response) => {
 // POST /api/auth/resend-code
 router.post("/resend", async (req: Request, res: Response) => {
   const { email } = req.body;
-
   try {
     await resendConfirmationCode(email);
-
     return res.status(200).json({
       status: 200,
       success: true,
@@ -205,12 +190,10 @@ router.post("/resend", async (req: Request, res: Response) => {
   } catch (error: any) {
     let status = 400;
     let message = error.message || "Failed to resend verification code";
-
     if (error.name === "UserNotFoundException") {
       status = 404;
       message = "User not found.";
     }
-
     return res.status(status).json({
       status,
       success: false,

@@ -234,7 +234,7 @@ export async function batchGetItemsFromDynamoDB<
       { batchGetItemsParam }
     );
     handleErrorsAxios(error, {});
-    return []; // TS safety (unreachable at runtime)
+    return [];
   }
 }
 

@@ -43,7 +43,6 @@ export const authenticateMe = (req: any, res: any, next: any) => {
   if (!idToken) {
     return res.status(401).json({ error: "Access denied" });
   }
-
   jwt.verify(
     idToken,
     getKey,
