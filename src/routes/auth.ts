@@ -5,7 +5,7 @@ import {
   signInUser,
   signUpUser,
 } from "../services/authService";
-import { authenticateMe } from "../middlewares/authMiddleware";
+import { authenticateMe, isSubAllowed } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 
 const router = Router();
@@ -127,7 +127,7 @@ router.get("/me", authenticateMe, (req: Request, res: Response) => {
   return res.json({
     success: true,
     user: {
-      sub: user.sub,
+      isAdmin: isSubAllowed(user?.sub) ? true : false,
       email: user.email,
       given_name: user.given_name,
       family_name: user.family_name,

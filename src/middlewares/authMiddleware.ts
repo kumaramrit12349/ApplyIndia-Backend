@@ -60,7 +60,7 @@ export const authenticateMe = (req: any, res: any, next: any) => {
 
 const ALLOWED_SUB = ["91539dea-c071-70a1-f14c-e99807a1d727"];
 
-const isSubAllowed = (sub: string): boolean => {
+export const isSubAllowed = (sub: string): boolean => {
   if (!sub) return false;
   return ALLOWED_SUB.includes(sub);
 };
