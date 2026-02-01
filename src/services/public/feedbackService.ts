@@ -14,9 +14,6 @@ export async function addFeedbackToDB(
   feedback: IFeedbackInput
 ): Promise<boolean> {
   try {
-
-    console.log('feedback', feedback);
-
     const item = {
       pk: TABLE_PK_MAPPER.Feedback,
       sk: TABLE_PK_MAPPER.Feedback + ulid(),
@@ -24,9 +21,8 @@ export async function addFeedbackToDB(
       email: feedback.email,
       message: feedback.message,
     };
-
     await insertDataDynamoDB(
-      ALL_TABLE_NAMES.Feedback, // or same table if single-table design
+      ALL_TABLE_NAMES.Feedback,
       item
     );
     return true;

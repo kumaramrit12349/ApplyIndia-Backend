@@ -16,17 +16,14 @@ export async function insertItemsIntoDynamoDBInBulk<T extends Record<string, any
     if (!items?.length) {
       throw new Error("No items provided for bulk insert");
     }
-
     const now = Date.now();
-
     const transactItems: TransactWriteItem[] = items.map((item) => {
-      // 🔑 Do NOT mutate original object
+      // Do NOT mutate original object
       const itemWithTimestamps = {
         ...item,
         created_at: item.created_at ?? now, // only if missing
         modified_at: now,                   // always update
       };
-
       return {
         Put: {
           TableName: DYNAMODB_CONFIG.TABLE_NAME,
@@ -38,9 +35,7 @@ export async function insertItemsIntoDynamoDBInBulk<T extends Record<string, any
         },
       };
     });
-
     const dynamoDB = new DynamoDBClient(dynamoDBClient);
-
     await dynamoDB.send(
       new TransactWriteItemsCommand({
         TransactItems: transactItems,

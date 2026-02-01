@@ -12,6 +12,5 @@ export const dynamoDBClient = new DynamoDBClient(
       }
     : {
         region: AWS_CONFIG.region,
-        // 👈 NO credentials in Lambda
       },
 );

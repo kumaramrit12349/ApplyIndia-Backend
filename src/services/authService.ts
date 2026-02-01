@@ -109,13 +109,11 @@ export async function confirmSignUp(email: string, code: string) {
   if (!email || !code) {
     createThrowError(400, "BadRequest", "Email and code are required", { email });
   }
-
   const cmd = new ConfirmSignUpCommand({
     ClientId: process.env.COGNITO_CLIENT_ID!,
     Username: email,
     ConfirmationCode: code,
   });
-
   try {
     await cognito.send(cmd); // 200 OK if success
   } catch (error: any) {
@@ -135,12 +133,10 @@ export async function resendConfirmationCode(email: string) {
   if (!email) {
     createThrowError(400, "BadRequest", "Email is required", { email });
   }
-
   const cmd = new ResendConfirmationCodeCommand({
     ClientId: process.env.COGNITO_CLIENT_ID!,
     Username: email,
   });
-
   try {
     await cognito.send(cmd);
   } catch (error: any) {

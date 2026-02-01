@@ -1,4 +1,3 @@
-// src/@types/auth.ts
 export interface RegisterRequest {
   email: string;
   password: string;
@@ -23,7 +22,6 @@ export interface ISignUpRes {
 
 export interface IErrorWithDetails extends Error {
   code?: number;
-  // make name non-optional and string matching Error interface
   name: string;
   details?: { email?: string };
 }

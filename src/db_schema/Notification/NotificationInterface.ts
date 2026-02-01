@@ -1,5 +1,3 @@
-/* ================= ROOT ================= */
-
 import { NOTIFICATION_TYPE } from "./NotificationConstant";
 
 export interface INotification {

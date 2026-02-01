@@ -5,7 +5,5 @@ export const SERVER_ERROR = "Internal Server Error";
 export const INVALID_INPUT = "Invalid input data";
 export const TABLE_NAME_NOT_FOUND = "Invalid Input, table name not found";
 export const WRONG_PK_SK_INPUT = "Wrong pk or sk in input";
-
-
 export const TRY_AGAIN =
   "We did not get any response from server!! Try again later";

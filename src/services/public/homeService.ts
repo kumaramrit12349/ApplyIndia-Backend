@@ -21,7 +21,6 @@ export async function getHomePageNotifications(): Promise<
   Record<string, Array<{ title: string; sk: string }>>
 > {
   try {
-    console.log('hre-111111111111111');
     const items = await fetchDynamoDB<INotification>(
       ALL_TABLE_NAME.Notification,
       undefined,
@@ -46,16 +45,11 @@ export async function getHomePageNotifications(): Promise<
       undefined,
       false // exclude archived
     );
-    console.log('items', items);
-
     // Extra safety: ensure approved_at exists and is number
     const approved = items.filter((n) => typeof n.approved_at === "number");
-
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
-
     const grouped: Record<string, Array<{ title: string; sk: string }>> = {};
-
     const pushWithLimit = (
       key: string,
       item: { title: string; sk: string },
@@ -66,38 +60,30 @@ export async function getHomePageNotifications(): Promise<
         grouped[key].push(item);
       }
     };
-
     for (const n of approved) {
       const sk = n
         .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
         .replace("#META", "");
-
       const baseItem = {
         title: n.title,
         sk,
       };
-
       // Primary category
       pushWithLimit(n.category || "Uncategorized", baseItem);
-
       // Virtual categories
       if (n.has_admit_card) {
         pushWithLimit(NOTIFICATION_CATEGORIES.ADMIT_CARD, baseItem);
       }
-
       if (n.has_syllabus) {
         pushWithLimit(NOTIFICATION_CATEGORIES.SYLLABUS, baseItem);
       }
-
       if (n.has_answer_key) {
         pushWithLimit(NOTIFICATION_CATEGORIES.ANSWER_KEY, baseItem);
       }
-
       if (n.has_result) {
         pushWithLimit(NOTIFICATION_CATEGORIES.RESULT, baseItem);
       }
     }
-
     return grouped;
   } catch (error) {
     logErrorLocation(
@@ -119,7 +105,7 @@ export async function getNotificationsByCategory(
   lastEvaluatedKeySk?: string, // ONLY sk from frontend
   searchValue?: string
 ): Promise<{
-  data: Array<{ title: string; id: string }>;
+  data: Array<{ title: string; sk: string }>;
   lastEvaluatedKey?: string; // ONLY sk returned
 }> {
   try {
@@ -190,11 +176,11 @@ export async function getNotificationsByCategory(
     return {
       data: result.results.map((n) => ({
         title: n.title,
-        id: n
+        sk: n
           .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
           .replace("#META", ""),
       })),
-      lastEvaluatedKey: result.lastEvaluatedKey?.sk, // ✅ ONLY sk
+      lastEvaluatedKey: result.lastEvaluatedKey?.sk,
     };
   } catch (error) {
     logErrorLocation(

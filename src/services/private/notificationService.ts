@@ -28,51 +28,40 @@ export async function addCompleteNotification(data: INotification) {
     if (!data.title || !data.category || !data.start_date) {
       throw new Error("Missing required notification fields");
     }
-
     const notificationId = generateId();
     const now = Date.now();
     const pk = TABLE_PK_MAPPER.Notification;
-
     const base = {
       pk,
       notification_id: notificationId,
       created_at: now,
       modified_at: now,
     };
-
-    // ✅ Normalize dates
+    // Normalize dates
     const startDate = toEpoch(data.start_date);
     const lastDateToApply = toEpoch(data.last_date_to_apply);
     const examDate = toEpoch(data.exam_date);
-
     const metaItem = {
       ...base,
       sk: `${pk}${notificationId}#META`,
       type: NOTIFICATION_TYPE.META,
-
       title: data.title,
       category: data.category || "UNKNOWN",
       department: data.department || "UNKNOWN",
-
       start_date: startDate,
       last_date_to_apply: lastDateToApply,
       exam_date: examDate,
-
       total_vacancies: data.total_vacancies,
-
       has_syllabus: data?.has_syllabus,
       has_admit_card: data?.has_admit_card,
       has_result: data?.has_result,
       has_answer_key: data?.has_answer_key,
-
       is_archived: false,
       approved_at: null,
-
-      // ✅ GSI must also use NUMBER
+      // GSI must also use NUMBER
       gsi1pk: `CATEGORY#${data.category || "UNKNOWN"}`,
       gsi1sk: `DATE#${lastDateToApply ?? 0}#${notificationId}`,
     };
-
     const detailsItem = {
       ...base,
       sk: `${pk}${notificationId}#DETAILS`,
@@ -81,21 +70,18 @@ export async function addCompleteNotification(data: INotification) {
       long_description: data.details?.long_description || "",
       important_date_details: data.details?.important_date_details || "",
     };
-
     const feeItem = {
       ...base,
       sk: `${pk}${notificationId}#FEE`,
       type: NOTIFICATION_TYPE.FEE,
       ...(data.fee || {}),
     };
-
     const eligibilityItem = {
       ...base,
       sk: `${pk}${notificationId}#ELIGIBILITY`,
       type: NOTIFICATION_TYPE.ELIGIBILITY,
       ...(data.eligibility || {}),
     };
-
     const linksItem = {
       ...base,
       sk: `${pk}${notificationId}#LINKS`,
@@ -104,7 +90,6 @@ export async function addCompleteNotification(data: INotification) {
         Object.entries(data.links || {}).filter(([_, v]) => !!v)
       ),
     };
-
     await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [
       metaItem,
       detailsItem,
@@ -112,7 +97,6 @@ export async function addCompleteNotification(data: INotification) {
       eligibilityItem,
       linksItem,
     ]);
-
     return {
       success: true,
       notificationId,
@@ -152,7 +136,6 @@ export async function viewNotifications(): Promise<INotificationListItem[]> {
       { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
       "#type = :type"
     );
-
     return notifications.sort((a, b) => b.created_at - a.created_at);
   } catch (error) {
     logErrorLocation(
@@ -214,16 +197,11 @@ export async function editCompleteNotification(
   data: Partial<INotification>
 ) {
   try {
-    console.log("data", data);
     if (!id || !data) {
       throw new Error(INVALID_INPUT);
     }
-
     const pk = TABLE_PK_MAPPER.Notification;
-    const now = Date.now();
-
     const updates: Promise<any>[] = [];
-
     /* ================= META ================= */
     if (
       data.title ||
@@ -250,7 +228,6 @@ export async function editCompleteNotification(
         })
       );
     }
-
     /* ================= DETAILS ================= */
     if (data.details) {
       updates.push(
@@ -259,7 +236,6 @@ export async function editCompleteNotification(
         })
       );
     }
-
     /* ================= FEE ================= */
     if (data.fee) {
       updates.push(
@@ -268,7 +244,6 @@ export async function editCompleteNotification(
         })
       );
     }
-
     /* ================= ELIGIBILITY ================= */
     if (data.eligibility) {
       updates.push(
@@ -277,7 +252,6 @@ export async function editCompleteNotification(
         })
       );
     }
-
     /* ================= LINKS ================= */
     if (data.links) {
       updates.push(
@@ -288,7 +262,6 @@ export async function editCompleteNotification(
         })
       );
     }
-
     await Promise.all(updates);
     return true;
   } catch (error) {
@@ -316,18 +289,14 @@ export async function approveNotification(
     if (!id || !approvedBy) {
       throw new Error("Invalid approve notification input");
     }
-
     const pk = TABLE_PK_MAPPER.Notification;
     const sk = `${pk}${id}#META`;
     const now = Date.now();
-
     const attributesToUpdate = {
       approved_at: now,
       approved_by: approvedBy,
     };
-
     await updateDynamoDB(pk, sk, attributesToUpdate);
-
     return attributesToUpdate;
   } catch (error) {
     logErrorLocation(
@@ -349,17 +318,13 @@ export async function archiveNotification(id: string): Promise<boolean> {
     if (!id) {
       throw new Error("Invalid notification id");
     }
-
     const pk = TABLE_PK_MAPPER.Notification;
     const sk = `${pk}${id}#META`;
     const now = Date.now();
-
     const attributesToUpdate = {
       is_archived: true,
     };
-
     await updateDynamoDB(pk, sk, attributesToUpdate);
-
     return true;
   } catch (error) {
     logErrorLocation(
@@ -381,16 +346,12 @@ export async function unarchiveNotification(id: string): Promise<boolean> {
     if (!id) {
       throw new Error("Invalid notification id");
     }
-
     const pk = TABLE_PK_MAPPER.Notification;
     const sk = `${pk}${id}#META`;
-
     const attributesToUpdate = {
       is_archived: false,
     };
-
     await updateDynamoDB(pk, sk, attributesToUpdate);
-
     return true;
   } catch (error) {
     logErrorLocation(
