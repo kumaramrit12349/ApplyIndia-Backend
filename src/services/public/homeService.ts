@@ -105,7 +105,7 @@ export async function getNotificationsByCategory(
   lastEvaluatedKeySk?: string, // ONLY sk from frontend
   searchValue?: string
 ): Promise<{
-  data: Array<{ title: string; id: string }>;
+  data: Array<{ title: string; sk: string }>;
   lastEvaluatedKey?: string; // ONLY sk returned
 }> {
   try {
@@ -176,11 +176,11 @@ export async function getNotificationsByCategory(
     return {
       data: result.results.map((n) => ({
         title: n.title,
-        id: n
+        sk: n
           .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
           .replace("#META", ""),
       })),
-      lastEvaluatedKey: result.lastEvaluatedKey?.sk, // ✅ ONLY sk
+      lastEvaluatedKey: result.lastEvaluatedKey?.sk,
     };
   } catch (error) {
     logErrorLocation(
