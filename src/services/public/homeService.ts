@@ -1,6 +1,7 @@
 import {
   NOTIFICATION,
   NOTIFICATION_TYPE,
+  NOTIFICATION_TYPE_MAPPER,
 } from "../../db_schema/Notification/NotificationConstant";
 import { INotification } from "../../db_schema/Notification/NotificationInterface";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../../db_schema/shared/SharedConstant";
 import { IKeyValues } from "../../db_schema/shared/SharedInterface";
 import {
+  fetchByIndexDynamoDB,
   fetchDynamoDB,
   fetchDynamoDBWithLimit,
 } from "../../Interpreter/dynamoDB/fetchCalls";
@@ -63,7 +65,7 @@ export async function getHomePageNotifications(): Promise<
     for (const n of approved) {
       const sk = n
         .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
-        .replace("#META", "");
+        .replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "");
       const baseItem = {
         title: n.title,
         sk,
@@ -102,95 +104,64 @@ export async function getHomePageNotifications(): Promise<
 export async function getNotificationsByCategory(
   category: string,
   limit: number,
-  lastEvaluatedKeySk?: string, // ONLY sk from frontend
-  searchValue?: string
+  lastEvaluatedKeySk?: string,
+  searchValue?: string,
 ): Promise<{
   data: Array<{ title: string; sk: string }>;
-  lastEvaluatedKey?: string; // ONLY sk returned
+  lastEvaluatedKey?: string;
 }> {
   try {
+    const normalizedCategory = category?.toLowerCase();
+    if (!normalizedCategory) {
+      throw new Error("Invalid category");
+    }
     /* ================= PAGINATION ================= */
-    let lastEvaluatedKey: { pk: string; sk: string } | undefined;
+    let exclusiveStartKey;
     if (lastEvaluatedKeySk) {
-      // SAFETY CHECK
-      if (!lastEvaluatedKeySk.includes("#")) {
-        throw new Error("Invalid lastEvaluatedKeySk format");
-      }
-      const pkPrefix = lastEvaluatedKeySk.split("#")[0] + "#";
-      lastEvaluatedKey = {
-        pk: pkPrefix,
-        sk: lastEvaluatedKeySk,
+      exclusiveStartKey = {
+        categoryPk: { S: `${normalizedCategory}#META` },
+        categorySk: { S: lastEvaluatedKeySk },
       };
     }
-    const normalizedCategory = category?.toLowerCase() || "all";
-    /* ================= BASE FILTER ================= */
-    const queryFilter: IKeyValues = {
-      type: NOTIFICATION_TYPE.META,
-      approved_by: "admin",
-    };
-    let filterString = "#type=:type and #approved_by=:approved_by";
-    /* ================= CATEGORY LOGIC ================= */
-    const specialCategoryFlags: Record<string, string> = {
-      [NOTIFICATION_CATEGORIES.ADMIT_CARD]: NOTIFICATION.has_admit_card,
-      [NOTIFICATION_CATEGORIES.SYLLABUS]: NOTIFICATION.has_syllabus,
-      [NOTIFICATION_CATEGORIES.ANSWER_KEY]: NOTIFICATION.has_answer_key,
-      [NOTIFICATION_CATEGORIES.RESULT]: NOTIFICATION.has_result,
-    };
-    if (normalizedCategory !== "all") {
-      const flag = specialCategoryFlags[normalizedCategory];
-      if (flag) {
-        queryFilter[flag] = true;
-        filterString += ` and ${flag}=:${flag}`;
-      } else {
-        queryFilter.category = category;
-        filterString += " and #category=:category";
-      }
-    }
-    /* ================= SEARCH ================= */
-    if (searchValue?.trim()) {
-      queryFilter.title = searchValue;
-      filterString += " and contains(title,:title)";
-    }
     /* ================= QUERY ================= */
-    const result = await fetchDynamoDBWithLimit<INotification>(
-      ALL_TABLE_NAME.Notification,
-      limit,
-      lastEvaluatedKey,
-      [
-        NOTIFICATION.sk,
-        NOTIFICATION.title,
-        NOTIFICATION.created_at,
-        NOTIFICATION.category,
-        NOTIFICATION.has_admit_card,
-        NOTIFICATION.has_answer_key,
-        NOTIFICATION.has_result,
-        NOTIFICATION.has_syllabus,
-        NOTIFICATION.type,
+    const result = await fetchByIndexDynamoDB<any>({
+      indexName: "categoryGsi",
+      keyConditionExpression:
+        "categoryPk = :category",
+      expressionAttributeValues: {
+        ":category": { S: `${normalizedCategory}#META` }
+      },
+      attributesToGet: [
+        "sk",
+        "title",
+        "created_at",
+        "category",
       ],
-      queryFilter,
-      filterString
-    );
-    /* ================= SORT ================= */
-    result.results.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+      limit,
+      exclusiveStartKey,
+      sortAscending: true,
+    });
+    let items = result.results;
+    /* ================= SEARCH (Manual Filtering) ================= */
+    if (searchValue?.trim()) {
+      const search = searchValue.toLowerCase();
+
+      items = items.filter((item) =>
+        item.title?.S?.toLowerCase().includes(search)
+      );
+    }
     /* ================= RESPONSE ================= */
     return {
-      data: result.results.map((n) => ({
-        title: n.title,
-        sk: n
-          .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
-          .replace("#META", ""),
+      data: items.map((n: any) => ({
+        title: n.title?.S,
+        sk: n.sk?.S
+          ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+          ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, ""),
       })),
-      lastEvaluatedKey: result.lastEvaluatedKey?.sk,
+      lastEvaluatedKey:
+        result.lastEvaluatedKey?.categorySk?.S,
     };
   } catch (error) {
-    logErrorLocation(
-      "notificationService.ts",
-      "getNotificationsByCategory",
-      error,
-      "DB error while fetching notifications by category (DynamoDB)",
-      "",
-      { category, limit, lastEvaluatedKeySk, searchValue }
-    );
     throw error;
   }
 }

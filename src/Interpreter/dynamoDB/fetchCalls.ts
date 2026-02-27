@@ -1,6 +1,7 @@
 import {
   batchGetItemsFromDynamoDB,
   getItemFromDynamoDB,
+  queryItemsByIndexDynamoDB,
   queryItemsFromDynamoDB,
   queryItemsWithLimitDynamoDB,
 } from "../../dynamoDB_CRUD/fetchData";
@@ -535,6 +536,58 @@ export async function getRelationalData<T extends Record<string, any>>(
     }
     return item;
   });
+}
+
+
+export async function fetchByIndexDynamoDB<T>({
+  indexName,
+  keyConditionExpression,
+  expressionAttributeValues,
+  attributesToGet,
+  limit,
+  exclusiveStartKey,
+  sortAscending,
+}: {
+  indexName: string;
+  keyConditionExpression: string;
+  expressionAttributeValues: Record<string, any>;
+  attributesToGet: string[];
+  limit?: number;
+  exclusiveStartKey?: Record<string, any>;
+  sortAscending?: boolean;
+}) {
+  try {
+    let projectionExpression: string | undefined;
+    let expressionAttributeNames:
+      | Record<string, string>
+      | undefined;
+
+    if (attributesToGet?.length) {
+      expressionAttributeNames = {};
+      projectionExpression = attributesToGet
+        .map((attr, index) => {
+          const key = `#attr${index}`;
+          expressionAttributeNames![key] = attr;
+          return key;
+        })
+        .join(", ");
+    }
+    const result = await queryItemsByIndexDynamoDB<T>(
+      {
+        indexName,
+        keyConditionExpression,
+        expressionAttributeValues,
+        projectionExpression,
+        expressionAttributeNames,
+        limit,
+        exclusiveStartKey,
+        scanIndexForward: sortAscending,
+      }
+    );
+    return result;
+  } catch (error) {
+    throw error;
+  }
 }
 
 const RELATIONAL_TABLES_PROPERTIES = {

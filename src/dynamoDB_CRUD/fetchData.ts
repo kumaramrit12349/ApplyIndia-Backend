@@ -17,6 +17,9 @@ import { dynamoDBClient } from "../aws/dynamodb.client";
 import { ARCHIVED } from "../db_schema/shared/SharedConstant";
 import { IBatchGet } from "../db_schema/shared/SharedInterface";
 import { DYNAMODB_CONFIG } from "../config/env";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+
+export const docClient = DynamoDBDocumentClient.from(dynamoDBClient);
 
 export async function getItemFromDynamoDB(
   getItemParam: GetItemCommandInput,
@@ -238,3 +241,49 @@ export async function batchGetItemsFromDynamoDB<
   }
 }
 
+
+export async function queryItemsByIndexDynamoDB<T>(
+  params: {
+    indexName: string;
+    keyConditionExpression: string;
+    expressionAttributeValues: Record<string, any>;
+    projectionExpression?: string;
+    expressionAttributeNames?: Record<string, string>;
+    limit?: number;
+    exclusiveStartKey?: Record<string, any>;
+    scanIndexForward?: boolean;
+  }
+): Promise<{
+  results: T[];
+  lastEvaluatedKey?: Record<string, any>;
+}> {
+  try {
+    const queryParams: QueryCommandInput = {
+      TableName: "ApplyIndia-dev",
+      IndexName: params.indexName,
+      KeyConditionExpression: params.keyConditionExpression,
+      ExpressionAttributeValues: params.expressionAttributeValues,
+      Limit: params.limit ?? 20,
+      ScanIndexForward: params.scanIndexForward ?? true,
+    };
+    if (params.projectionExpression) {
+      queryParams.ProjectionExpression = params.projectionExpression;
+    }
+    if (params.expressionAttributeNames) {
+      queryParams.ExpressionAttributeNames =
+        params.expressionAttributeNames;
+    }
+    if (params.exclusiveStartKey) {
+      queryParams.ExclusiveStartKey = params.exclusiveStartKey;
+    }
+    const result = await dynamoDBClient.send(
+      new QueryCommand(queryParams)
+    );
+    return {
+      results: (result.Items as T[]) || [],
+      lastEvaluatedKey: result.LastEvaluatedKey,
+    };
+  } catch (error) {
+    throw error;
+  }
+}
