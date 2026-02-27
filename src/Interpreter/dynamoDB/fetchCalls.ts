@@ -238,7 +238,7 @@ export async function fetchDynamoDB<T>(
         EXPRESSION_ATTRIBUTES_NAMES.pk +
         SPECIAL_CHARACTERS.EQUALS_COLON +
         KEY_ATTRIBUTES.pk;
-      // ⭐ ADD begins_with(sk, skBeginsWith) SUPPORT
+      // ADD begins_with(sk, skBeginsWith) SUPPORT
       if (skBeginsWith) {
         expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] =
           KEY_ATTRIBUTES.sk;
@@ -301,7 +301,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
   attributesToGet?: string[],
   queryFilter?: IKeyValues,
   filterString?: string
-): Promise<{ results: T[]; lastEvaluatedKey?: Record<string, any> }> {
+): Promise<{ results: T[]; lastEvaluatedKey?: { pk: string; sk: string }}> {
   try {
     const pkValue = TABLE_PK_MAPPER[tableName];
     if (!pkValue) {
@@ -406,7 +406,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
     );
     return {
       results: dataWithRelations,
-      lastEvaluatedKey: result.lastEvaluatedKey,
+      lastEvaluatedKey: result.lastEvaluatedKey as { pk: string; sk: string },
     };
   } catch (error) {
     logErrorLocation(

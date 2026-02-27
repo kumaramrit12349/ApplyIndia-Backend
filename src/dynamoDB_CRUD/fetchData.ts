@@ -137,7 +137,7 @@ export async function queryItemsWithLimitDynamoDB<T>(
     return {
       results: accumulated,
       lastEvaluatedKey: result.LastEvaluatedKey
-        ? unmarshall(result.LastEvaluatedKey)
+        ? unmarshall(result.LastEvaluatedKey) as { pk: string; sk: string }
         : undefined,
     };
   } catch (error) {

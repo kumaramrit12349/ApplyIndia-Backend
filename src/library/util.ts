@@ -1,4 +1,5 @@
 import { ulid } from "ulid";
+import { NOTIFICATION_TYPE_MAPPER } from "../db_schema/Notification/NotificationConstant";
 
 export function generateId(): string {
   return ulid();
@@ -8,7 +9,7 @@ export function buildNotificationDetail(items: any[]): any {
   const result: any = {};
   for (const item of items) {
     const sk: string = item.sk;
-    if (sk.endsWith("#META")) {
+    if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.META}`)) {
       Object.assign(result, {
         sk: item.sk,
         title: item.title,
@@ -28,14 +29,14 @@ export function buildNotificationDetail(items: any[]): any {
         approved_by: item.approved_by,
       });
     }
-    if (sk.endsWith("#DETAILS")) {
+    if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.DETAILS}`)) {
       result.details = {
         short_description: item.short_description,
         long_description: item.long_description,
         important_date_details: item.important_date_details,
       };
     }
-    if (sk.endsWith("#ELIGIBILITY")) {
+    if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.ELIGIBILITY}`)) {
       result.eligibility = {
         min_age: item.min_age,
         max_age: item.max_age,
@@ -45,7 +46,7 @@ export function buildNotificationDetail(items: any[]): any {
         age_relaxation_details: item.age_relaxation_details,
       };
     }
-    if (sk.endsWith("#FEE")) {
+    if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.FEE}`)) {
       result.fee = {
         general_fee: item.general_fee,
         obc_fee: item.obc_fee,
@@ -55,7 +56,7 @@ export function buildNotificationDetail(items: any[]): any {
         other_fee_details: item.other_fee_details,
       };
     }
-    if (sk.endsWith("#LINKS")) {
+    if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.LINKS}`)) {
       result.links = {
         apply_online_url: item.apply_online_url,
         official_website_url: item.official_website_url,
