@@ -15,7 +15,11 @@ import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { handleErrorsAxios, logErrorLocation } from "../utils/errorUtils";
 import { dynamoDBClient } from "../aws/dynamodb.client";
 import { ARCHIVED } from "../db_schema/shared/SharedConstant";
-import { IBatchGet } from "../db_schema/shared/SharedInterface";
+import {
+  IBatchGet,
+  QueryByIndexParams,
+  QueryByIndexResponse,
+} from "../db_schema/shared/SharedInterface";
 import { DYNAMODB_CONFIG } from "../config/env";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
@@ -27,7 +31,7 @@ export async function getItemFromDynamoDB(
   try {
     const dynamoDB = new DynamoDBClient(dynamoDBClient);
     const data: GetItemCommandOutput = await dynamoDB.send(
-      new GetItemCommand(getItemParam)
+      new GetItemCommand(getItemParam),
     );
     const item = data.Item ? unmarshall(data.Item) : undefined;
     return item;
@@ -39,7 +43,7 @@ export async function getItemFromDynamoDB(
       error,
       "Error while get item from DynamoDB",
       `learnerSK:`,
-      { getItemParam }
+      { getItemParam },
     );
     handleErrorsAxios(error, {});
   }
@@ -47,7 +51,7 @@ export async function getItemFromDynamoDB(
 
 export async function queryItemsFromDynamoDB<T>(
   queryPrams: QueryCommandInput,
-  includeArchived: boolean = true
+  includeArchived: boolean = true,
 ): Promise<T[]> {
   try {
     let result: QueryCommandOutput;
@@ -66,13 +70,12 @@ export async function queryItemsFromDynamoDB<T>(
       if (queryPrams.FilterExpression) {
         queryPrams.FilterExpression += ARCHIVED.filterExpression;
       } else {
-        queryPrams.FilterExpression =
-          ARCHIVED.filterExpression.substring(4);
+        queryPrams.FilterExpression = ARCHIVED.filterExpression.substring(4);
       }
     }
     // Marshal after all mutations
     queryPrams.ExpressionAttributeValues = marshall(
-      queryPrams.ExpressionAttributeValues
+      queryPrams.ExpressionAttributeValues,
     );
     const accumulated: T[] = [];
     do {
@@ -97,7 +100,7 @@ export async function queryItemsFromDynamoDB<T>(
       error,
       "Error while query items from DynamoDB",
       `learnerSK:`,
-      { queryPrams }
+      { queryPrams },
     );
     handleErrorsAxios(error, {});
     return [];
@@ -107,7 +110,7 @@ export async function queryItemsFromDynamoDB<T>(
 export async function queryItemsWithLimitDynamoDB<T>(
   queryPrams: QueryCommandInput,
   limit: number,
-  startKey: Record<string, any>
+  startKey: Record<string, any>,
 ): Promise<{ results: T[]; lastEvaluatedKey: Record<string, any> }> {
   try {
     if (!queryPrams?.ExpressionAttributeValues[ARCHIVED.exprssionValue]) {
@@ -122,7 +125,7 @@ export async function queryItemsWithLimitDynamoDB<T>(
       queryPrams.FilterExpression = ARCHIVED.filterExpression.substring(4);
     }
     queryPrams.ExpressionAttributeValues = marshall(
-      queryPrams.ExpressionAttributeValues
+      queryPrams.ExpressionAttributeValues,
     );
     const accumulated: T[] = [];
     const params: QueryCommandInput = {
@@ -140,7 +143,7 @@ export async function queryItemsWithLimitDynamoDB<T>(
     return {
       results: accumulated,
       lastEvaluatedKey: result.LastEvaluatedKey
-        ? unmarshall(result.LastEvaluatedKey) as { pk: string; sk: string }
+        ? (unmarshall(result.LastEvaluatedKey) as { pk: string; sk: string })
         : undefined,
     };
   } catch (error) {
@@ -150,15 +153,13 @@ export async function queryItemsWithLimitDynamoDB<T>(
       error,
       "Error while query items from DynamoDB",
       `learnerSK:`,
-      { queryPrams }
+      { queryPrams },
     );
     handleErrorsAxios(error, {});
   }
 }
 
-export async function batchGetItemsFromDynamoDB<
-  T extends Record<string, any>
->(
+export async function batchGetItemsFromDynamoDB<T extends Record<string, any>>(
   batchGetItemsParam: IBatchGet,
 ): Promise<T[]> {
   try {
@@ -168,22 +169,18 @@ export async function batchGetItemsFromDynamoDB<
     batchGetItemsParam.ExpressionAttributeNames ??= {};
     if (
       batchGetItemsParam.ProjectionExpression &&
-      !batchGetItemsParam.ProjectionExpression.includes(
-        ARCHIVED.is_archived
-      )
+      !batchGetItemsParam.ProjectionExpression.includes(ARCHIVED.is_archived)
     ) {
-      batchGetItemsParam.ExpressionAttributeNames[
-        ARCHIVED.exprssionName
-      ] = ARCHIVED.is_archived;
-      batchGetItemsParam.ProjectionExpression +=
-        ARCHIVED.projectExpression;
+      batchGetItemsParam.ExpressionAttributeNames[ARCHIVED.exprssionName] =
+        ARCHIVED.is_archived;
+      batchGetItemsParam.ProjectionExpression += ARCHIVED.projectExpression;
     }
     /* ------------------------------------
      * 3. Marshall keys (DynamoDB limit = 100)
      * ------------------------------------ */
     const marshalledKeys: Record<string, AttributeValue>[] =
       batchGetItemsParam.Keys.map((key) =>
-        marshall({ pk: key.pk, sk: key.sk })
+        marshall({ pk: key.pk, sk: key.sk }),
       );
     const finalResult: T[] = [];
     /* ------------------------------------
@@ -194,23 +191,18 @@ export async function batchGetItemsFromDynamoDB<
       let requestItems: Record<string, KeysAndAttributes> = {
         [DYNAMODB_CONFIG.TABLE_NAME]: {
           Keys,
-          ProjectionExpression:
-            batchGetItemsParam.ProjectionExpression,
-          ExpressionAttributeNames:
-            batchGetItemsParam.ExpressionAttributeNames,
+          ProjectionExpression: batchGetItemsParam.ProjectionExpression,
+          ExpressionAttributeNames: batchGetItemsParam.ExpressionAttributeNames,
         },
       };
-      let unprocessedItems:
-        | Record<string, KeysAndAttributes>
-        | undefined;
+      let unprocessedItems: Record<string, KeysAndAttributes> | undefined;
       do {
         const params: BatchGetItemCommandInput = {
           RequestItems: unprocessedItems ?? requestItems,
         };
-        const result: BatchGetItemCommandOutput =
-          await dynamoDBClient.send(
-            new BatchGetItemCommand(params)
-          );
+        const result: BatchGetItemCommandOutput = await dynamoDBClient.send(
+          new BatchGetItemCommand(params),
+        );
         const responses = result.Responses?.[DYNAMODB_CONFIG.TABLE_NAME];
         if (responses) {
           for (const response of responses) {
@@ -221,10 +213,7 @@ export async function batchGetItemsFromDynamoDB<
           }
         }
         unprocessedItems = result.UnprocessedKeys;
-      } while (
-        unprocessedItems &&
-        Object.keys(unprocessedItems).length > 0
-      );
+      } while (unprocessedItems && Object.keys(unprocessedItems).length > 0);
     }
     return finalResult;
   } catch (error) {
@@ -234,35 +223,21 @@ export async function batchGetItemsFromDynamoDB<
       error,
       "Error while batch get items from DynamoDB",
       "",
-      { batchGetItemsParam }
+      { batchGetItemsParam },
     );
     handleErrorsAxios(error, {});
-    return [];
   }
 }
 
-
 export async function queryItemsByIndexDynamoDB<T>(
-  params: {
-    indexName: string;
-    keyConditionExpression: string;
-    expressionAttributeValues: Record<string, any>;
-    projectionExpression?: string;
-    expressionAttributeNames?: Record<string, string>;
-    limit?: number;
-    exclusiveStartKey?: Record<string, any>;
-    scanIndexForward?: boolean;
-  }
-): Promise<{
-  results: T[];
-  lastEvaluatedKey?: Record<string, any>;
-}> {
+  params: QueryByIndexParams,
+): Promise<QueryByIndexResponse<T>> {
   try {
     const queryParams: QueryCommandInput = {
-      TableName: "ApplyIndia-dev",
+      TableName: "ApplyIndia-dev", // move to constant if needed
       IndexName: params.indexName,
       KeyConditionExpression: params.keyConditionExpression,
-      ExpressionAttributeValues: params.expressionAttributeValues,
+      ExpressionAttributeValues: marshall(params.expressionAttributeValues),
       Limit: params.limit ?? 20,
       ScanIndexForward: params.scanIndexForward ?? true,
     };
@@ -270,20 +245,27 @@ export async function queryItemsByIndexDynamoDB<T>(
       queryParams.ProjectionExpression = params.projectionExpression;
     }
     if (params.expressionAttributeNames) {
-      queryParams.ExpressionAttributeNames =
-        params.expressionAttributeNames;
+      queryParams.ExpressionAttributeNames = params.expressionAttributeNames;
     }
     if (params.exclusiveStartKey) {
-      queryParams.ExclusiveStartKey = params.exclusiveStartKey;
+      queryParams.ExclusiveStartKey = marshall(params.exclusiveStartKey);
     }
-    const result = await dynamoDBClient.send(
-      new QueryCommand(queryParams)
-    );
+    const result = await dynamoDBClient.send(new QueryCommand(queryParams));
     return {
-      results: (result.Items as T[]) || [],
-      lastEvaluatedKey: result.LastEvaluatedKey,
+      results: (result.Items?.map((item) => unmarshall(item)) as T[]) || [],
+      lastEvaluatedKey: result.LastEvaluatedKey
+        ? unmarshall(result.LastEvaluatedKey)
+        : undefined,
     };
   } catch (error) {
-    throw error;
+    logErrorLocation(
+      "fetchData.ts",
+      "queryItemsByIndexDynamoDB",
+      error,
+      "Error while querying items by index from DynamoDB",
+      "",
+      { params },
+    );
+    handleErrorsAxios(error, {});
   }
 }

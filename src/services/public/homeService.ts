@@ -9,7 +9,6 @@ import {
   NOTIFICATION_CATEGORIES,
   TABLE_PK_MAPPER,
 } from "../../db_schema/shared/SharedConstant";
-import { IKeyValues } from "../../db_schema/shared/SharedInterface";
 import {
   fetchByIndexDynamoDB,
   fetchDynamoDB,
@@ -45,7 +44,7 @@ export async function getHomePageNotifications(): Promise<
       },
       "#type = :type AND #approved_by = :approved_by",
       undefined,
-      false // exclude archived
+      false, // exclude archived
     );
     // Extra safety: ensure approved_at exists and is number
     const approved = items.filter((n) => typeof n.approved_at === "number");
@@ -55,7 +54,7 @@ export async function getHomePageNotifications(): Promise<
     const pushWithLimit = (
       key: string,
       item: { title: string; sk: string },
-      limit = 10
+      limit = 10,
     ) => {
       if (!grouped[key]) grouped[key] = [];
       if (grouped[key].length < limit) {
@@ -94,7 +93,7 @@ export async function getHomePageNotifications(): Promise<
       error,
       "DB error while fetching home page notifications (DynamoDB)",
       "",
-      {}
+      {},
     );
     throw error;
   }
@@ -112,56 +111,138 @@ export async function getNotificationsByCategory(
 }> {
   try {
     const normalizedCategory = category?.toLowerCase();
+
     if (!normalizedCategory) {
       throw new Error("Invalid category");
     }
-    /* ================= PAGINATION ================= */
-    let exclusiveStartKey;
-    if (lastEvaluatedKeySk) {
-      exclusiveStartKey = {
-        categoryPk: { S: `${normalizedCategory}#META` },
-        categorySk: { S: lastEvaluatedKeySk },
+
+    const search = searchValue?.trim()?.toLowerCase();
+
+    let accumulated: INotification[] = [];
+    let nextKey: any = undefined;
+
+    /* ============================================================
+       CASE 1: CATEGORY = ALL (Main Table Query)
+       ============================================================ */
+    if (normalizedCategory === "all") {
+      let exclusiveStartKey = lastEvaluatedKeySk
+        ? {
+            pk: TABLE_PK_MAPPER.Notification,
+            sk: lastEvaluatedKeySk,
+          }
+        : undefined;
+
+      do {
+        const result = await fetchDynamoDBWithLimit<INotification>(
+          ALL_TABLE_NAME.Notification,
+          limit,
+          exclusiveStartKey,
+          [
+            NOTIFICATION.sk,
+            NOTIFICATION.title,
+            NOTIFICATION.created_at,
+            NOTIFICATION.category,
+            NOTIFICATION.type,
+          ],
+          { type: NOTIFICATION_TYPE.META },
+          "#type = :type",
+        );
+
+        let items = result.results;
+
+        if (search) {
+          items = items.filter((item) =>
+            item.title?.toLowerCase().includes(search),
+          );
+        }
+
+        accumulated = accumulated.concat(items);
+
+        exclusiveStartKey = result.lastEvaluatedKey;
+        nextKey = result.lastEvaluatedKey;
+
+      } while (
+        accumulated.length < limit &&
+        exclusiveStartKey
+      );
+
+      accumulated.sort(
+        (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0),
+      );
+
+      return {
+        data: accumulated.slice(0, limit).map((item) => ({
+          title: item.title ?? "",
+          sk:
+            item.sk
+              ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+              ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+        })),
+        lastEvaluatedKey: nextKey?.sk,
       };
     }
-    /* ================= QUERY ================= */
-    const result = await fetchByIndexDynamoDB<any>({
-      indexName: "categoryGsi",
-      keyConditionExpression:
-        "categoryPk = :category",
-      expressionAttributeValues: {
-        ":category": { S: `${normalizedCategory}#META` }
-      },
-      attributesToGet: [
-        "sk",
-        "title",
-        "created_at",
-        "category",
-      ],
-      limit,
-      exclusiveStartKey,
-      sortAscending: true,
-    });
-    let items = result.results;
-    /* ================= SEARCH (Manual Filtering) ================= */
-    if (searchValue?.trim()) {
-      const search = searchValue.toLowerCase();
 
-      items = items.filter((item) =>
-        item.title?.S?.toLowerCase().includes(search)
-      );
-    }
-    /* ================= RESPONSE ================= */
+    /* ============================================================
+       CASE 2: CATEGORY SPECIFIC (GSI)
+       ============================================================ */
+
+    let exclusiveStartKey: Record<string, any> | undefined;
+
+    do {
+      const result = await fetchByIndexDynamoDB<INotification>({
+        indexName: "categoryGsi",
+        keyConditionExpression: "categoryPk = :category",
+        expressionAttributeValues: {
+          ":category":
+            `${normalizedCategory}${NOTIFICATION_TYPE_MAPPER.META}`,
+        },
+        attributesToGet: [
+          NOTIFICATION.sk,
+          NOTIFICATION.title,
+          NOTIFICATION.created_at,
+          NOTIFICATION.category,
+        ],
+        limit,
+        exclusiveStartKey,
+        sortAscending: true,
+      });
+
+      let items = result.results;
+
+      if (search) {
+        items = items.filter((item) =>
+          item.title?.toLowerCase().includes(search),
+        );
+      }
+
+      accumulated = accumulated.concat(items);
+
+      exclusiveStartKey = result.lastEvaluatedKey;
+      nextKey = result.lastEvaluatedKey;
+
+    } while (
+      accumulated.length < limit &&
+      exclusiveStartKey
+    );
+
     return {
-      data: items.map((n: any) => ({
-        title: n.title?.S,
-        sk: n.sk?.S
-          ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
-          ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, ""),
+      data: accumulated.slice(0, limit).map((item) => ({
+        title: item.title ?? "",
+        sk:
+          item.sk
+            ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+            ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
       })),
-      lastEvaluatedKey:
-        result.lastEvaluatedKey?.categorySk?.S,
+      lastEvaluatedKey: nextKey?.categorySk,
     };
   } catch (error) {
-    throw error;
+    logErrorLocation(
+      "notificationService.ts",
+      "getNotificationsByCategory",
+      error,
+      "DB error while fetching notifications by category",
+      "",
+      { category, limit, lastEvaluatedKeySk, searchValue },
+    );
   }
 }

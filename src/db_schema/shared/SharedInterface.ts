@@ -36,3 +36,29 @@ export interface IKeyValues {
 export interface IFetchRelationalFields {
   [key: string]: any;
 }
+
+export interface QueryByIndexParams {
+  indexName: string;
+  keyConditionExpression: string;
+  expressionAttributeValues: Record<string, any>;
+  projectionExpression?: string;
+  expressionAttributeNames?: Record<string, string>;
+  limit?: number;
+  exclusiveStartKey?: Record<string, any>;
+  scanIndexForward?: boolean;
+}
+
+export interface QueryByIndexResponse<T> {
+  results: T[];
+  lastEvaluatedKey?: Record<string, any>;
+}
+
+export interface FetchByIndexParams {
+  indexName: string;
+  keyConditionExpression: string;
+  expressionAttributeValues: Record<string, any>;
+  attributesToGet: string[];
+  limit?: number;
+  exclusiveStartKey?: Record<string, any>;
+  sortAscending?: boolean;
+}
