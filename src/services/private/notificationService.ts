@@ -26,7 +26,7 @@ import { logErrorLocation } from "../../utils/errorUtils";
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: INotification) {
   try {
-    if (!data.title || !data.category || !data.start_date) {
+    if (!data.title || !data.category || !data.state || !data.start_date) {
       throw new Error("Missing required notification fields");
     }
     const notificationId = generateId();
@@ -45,12 +45,14 @@ export async function addCompleteNotification(data: INotification) {
     // IMPORTANT: pad for proper string sorting
     const paddedLastDate = String(lastDateToApply ?? 0).padStart(15, "0");
     const normalizedCategory = (data.category || "UNKNOWN").toLowerCase();
+    const normalizedState = (data.state || "UNKNOWN").toLowerCase();
     const metaItem = {
       ...base,
       sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.META}`,
       type: NOTIFICATION_TYPE.META,
       title: data.title,
       category: data.category || "UNKNOWN",
+      state: data.state || "UNKNOWN",
       department: data.department || "UNKNOWN",
       start_date: startDate,
       last_date_to_apply: lastDateToApply,
@@ -122,6 +124,8 @@ export async function addCompleteNotification(data: INotification) {
        */
       categoryPk: `${normalizedCategory}${NOTIFICATION_TYPE_MAPPER.META}`,
       categorySk: `${paddedLastDate}#${now}`,
+      statePk: `${normalizedState}${NOTIFICATION_TYPE_MAPPER.META}`,
+      stateSk: `${paddedLastDate}#${now}`,
     };
     const detailsItem = {
       ...base,
@@ -262,17 +266,28 @@ export async function editCompleteNotification(
       throw new Error(INVALID_INPUT);
     }
     const pk = TABLE_PK_MAPPER.Notification;
+    const notificationSk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
     const updates: Promise<any>[] = [];
+
     /* ================= META ================= */
     if (
       data.title ||
       data.category ||
+      data.state ||
       data.department ||
       data.start_date ||
       data.last_date_to_apply !== undefined ||
       data.exam_date ||
       data.total_vacancies !== undefined
     ) {
+      // We must fetch existing meta to construct GSI Sort Keys safely
+      const existingMetaArr = await fetchDynamoDB<INotification>(
+        ALL_TABLE_NAME.Notification,
+        notificationSk
+      );
+      const existingMeta = existingMetaArr[0];
+      if (!existingMeta) throw new Error("Notification not found");
+
       const updatePayload: any = {
         ...(data.title && { title: data.title }),
         ...(data.department && { department: data.department }),
@@ -282,29 +297,35 @@ export async function editCompleteNotification(
           total_vacancies: data.total_vacancies,
         }),
       };
-      /* CATEGORY CHANGE → update GSI PK */
-      if (data.category) {
-        const normalizedCategory = data.category.toLowerCase();
-        updatePayload.category = data.category;
-        updatePayload.categoryPk = `${normalizedCategory}${NOTIFICATION_TYPE_MAPPER.META}`;
-      }
-      /* LAST DATE CHANGE → update GSI SK */
+
+      const finalCategory = data.category || existingMeta.category;
+      const finalState = data.state || existingMeta.state || "UNKNOWN";
+
+      const newEpochLastDate = data.last_date_to_apply !== undefined
+        ? toEpoch(data.last_date_to_apply)
+        : existingMeta.last_date_to_apply;
+
+      const paddedLastDate = String(newEpochLastDate ?? 0).padStart(15, "0");
+      const originalCreatedAt = existingMeta.created_at || Date.now();
+
       if (data.last_date_to_apply !== undefined) {
-        const epochLastDate = toEpoch(data.last_date_to_apply);
-        const paddedLastDate = String(epochLastDate ?? 0).padStart(15, "0");
-        updatePayload.last_date_to_apply = epochLastDate;
-        // fetch original created_at first
-        const notificationSk =
-          TABLE_PK_MAPPER.Notification + id + `#${NOTIFICATION_TYPE.META}`;
-        const existingMeta = await fetchDynamoDB<INotification>(
-          ALL_TABLE_NAME.Notification,
-          notificationSk,
-          [NOTIFICATION.created_at],
-        );
-        const originalCreatedAt = existingMeta[0]?.created_at;
+        updatePayload.last_date_to_apply = newEpochLastDate;
+      }
+
+      // Always overwrite these to heal old data missing statePk/Sk or categoryPk/Sk
+      if (finalCategory) {
+        updatePayload.category = finalCategory;
+        updatePayload.categoryPk = `${finalCategory.toLowerCase()}${NOTIFICATION_TYPE_MAPPER.META}`;
         updatePayload.categorySk = `${paddedLastDate}#${originalCreatedAt}`;
       }
-      updates.push(updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`, updatePayload));
+
+      if (finalState) {
+        updatePayload.state = finalState;
+        updatePayload.statePk = `${finalState.toLowerCase()}${NOTIFICATION_TYPE_MAPPER.META}`;
+        updatePayload.stateSk = `${paddedLastDate}#${originalCreatedAt}`;
+      }
+
+      updates.push(updateDynamoDB(pk, notificationSk, updatePayload));
     }
 
     /* ================= DETAILS ================= */

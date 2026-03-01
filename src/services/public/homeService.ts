@@ -29,6 +29,7 @@ export async function getHomePageNotifications(): Promise<
         NOTIFICATION.sk,
         NOTIFICATION.title,
         NOTIFICATION.category,
+        NOTIFICATION.state,
         NOTIFICATION.created_at,
         NOTIFICATION.has_admit_card,
         NOTIFICATION.has_syllabus,
@@ -68,6 +69,7 @@ export async function getHomePageNotifications(): Promise<
       const baseItem = {
         title: n.title,
         sk,
+        state: n.state,
       };
       // Primary category
       pushWithLimit(n.category || "Uncategorized", baseItem);
@@ -247,6 +249,156 @@ export async function getNotificationsByCategory(
   }
 }
 
+// List notifications by state with pagination and optional search,
+export async function getNotificationsByState(
+  state: string,
+  limit: number,
+  lastEvaluatedKeySk?: string,
+  searchValue?: string,
+): Promise<{
+  data: Array<{ title: string; sk: string; state: string }>;
+  lastEvaluatedKey?: string;
+}> {
+  try {
+    const normalizedState = state?.toLowerCase();
+
+    if (!normalizedState) {
+      throw new Error("Invalid state");
+    }
+
+    const search = searchValue?.trim()?.toLowerCase();
+
+    let accumulated: INotification[] = [];
+    let nextKey: any = undefined;
+
+    /* ============================================================
+       CASE 1: STATE = ALL (Main Table Query)
+       ============================================================ */
+    if (normalizedState === "all") {
+      let exclusiveStartKey = lastEvaluatedKeySk
+        ? {
+          pk: TABLE_PK_MAPPER.Notification,
+          sk: lastEvaluatedKeySk,
+        }
+        : undefined;
+
+      do {
+        const result = await fetchDynamoDBWithLimit<INotification>(
+          ALL_TABLE_NAME.Notification,
+          limit,
+          exclusiveStartKey,
+          [
+            NOTIFICATION.sk,
+            NOTIFICATION.title,
+            NOTIFICATION.created_at,
+            NOTIFICATION.state,
+            NOTIFICATION.type,
+          ],
+          { type: NOTIFICATION_TYPE.META },
+          "#type = :type",
+        );
+
+        let items = result.results;
+
+        if (search) {
+          items = items.filter((item) =>
+            item.title?.toLowerCase().includes(search),
+          );
+        }
+
+        accumulated = accumulated.concat(items);
+
+        exclusiveStartKey = result.lastEvaluatedKey;
+        nextKey = result.lastEvaluatedKey;
+
+      } while (
+        accumulated.length < limit &&
+        exclusiveStartKey
+      );
+
+      accumulated.sort(
+        (a, b) => (b.created_at ?? 0) - (a.created_at ?? 0),
+      );
+
+      return {
+        data: accumulated.slice(0, limit).map((item) => ({
+          title: item.title ?? "",
+          state: item.state ?? "",
+          sk:
+            item.sk
+              ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+              ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+        })),
+        lastEvaluatedKey: nextKey?.sk,
+      };
+    }
+
+    /* ============================================================
+       CASE 2: STATE SPECIFIC (GSI)
+       ============================================================ */
+
+    let exclusiveStartKey: Record<string, any> | undefined;
+
+    do {
+      const result = await fetchByIndexDynamoDB<INotification>({
+        indexName: "stateGsi",
+        keyConditionExpression: "statePk = :state",
+        expressionAttributeValues: {
+          ":state":
+            `${normalizedState}${NOTIFICATION_TYPE_MAPPER.META}`,
+        },
+        attributesToGet: [
+          NOTIFICATION.sk,
+          NOTIFICATION.title,
+          NOTIFICATION.created_at,
+          NOTIFICATION.state,
+        ],
+        limit,
+        exclusiveStartKey,
+        sortAscending: true,
+      });
+
+      let items = result.results;
+
+      if (search) {
+        items = items.filter((item) =>
+          item.title?.toLowerCase().includes(search),
+        );
+      }
+
+      accumulated = accumulated.concat(items);
+
+      exclusiveStartKey = result.lastEvaluatedKey;
+      nextKey = result.lastEvaluatedKey;
+
+    } while (
+      accumulated.length < limit &&
+      exclusiveStartKey
+    );
+
+    return {
+      data: accumulated.slice(0, limit).map((item) => ({
+        title: item.title ?? "",
+        state: item.state ?? "",
+        sk:
+          item.sk
+            ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+            ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+      })),
+      lastEvaluatedKey: nextKey?.stateSk,
+    };
+  } catch (error) {
+    logErrorLocation(
+      "homeService.ts",
+      "getNotificationsByState",
+      error,
+      "DB error while fetching notifications by state",
+      "",
+      { state, limit, lastEvaluatedKeySk, searchValue },
+    );
+  }
+}
+
 // Fetch the 10 latest notifications across all categories
 export async function getLatestNotifications(): Promise<
   Array<{ title: string; sk: string }>
@@ -259,6 +411,7 @@ export async function getLatestNotifications(): Promise<
         NOTIFICATION.sk,
         NOTIFICATION.title,
         NOTIFICATION.created_at,
+        NOTIFICATION.state,
         NOTIFICATION.category,
         NOTIFICATION.has_admit_card,
         NOTIFICATION.has_syllabus,
@@ -291,6 +444,7 @@ export async function getLatestNotifications(): Promise<
       return {
         title: n.title || "",
         sk,
+        state: n.state,
       };
     });
 
@@ -301,6 +455,46 @@ export async function getLatestNotifications(): Promise<
       "getLatestNotifications",
       error,
       "DB error while fetching latest notifications (DynamoDB)",
+      "",
+      {},
+    );
+    throw error;
+  }
+}
+
+// Fetch available states that have at least one approved notification
+export async function getAvailableFilters(): Promise<{ states: string[] }> {
+  try {
+    const items = await fetchDynamoDB<INotification>(
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      [NOTIFICATION.state, NOTIFICATION.approved_at, NOTIFICATION.type],
+      {
+        [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+      },
+      "#type = :type",
+      undefined,
+      false // exclude archived
+    );
+
+    // Keep only approved ones
+    const approved = items.filter((n) => typeof n.approved_at === "number");
+
+    // Extract unique states
+    const statesSet = new Set<string>();
+    for (const item of approved) {
+      if (item.state) {
+        statesSet.add(item.state.toLowerCase());
+      }
+    }
+
+    return { states: Array.from(statesSet) };
+  } catch (error) {
+    logErrorLocation(
+      "homeService.ts",
+      "getAvailableFilters",
+      error,
+      "DB error while fetching available filters",
       "",
       {},
     );

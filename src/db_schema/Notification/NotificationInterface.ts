@@ -9,6 +9,7 @@ export interface INotification {
   /* Basic Info */
   title: string;
   category: string;
+  state: string;
   department: string;
   total_vacancies: number;
 
@@ -78,6 +79,7 @@ export interface INotificationListItem {
   sk: string;
   title: string;
   category: string;
+  state: string;
   created_at: number;
   type: string;
   approved_at: number;

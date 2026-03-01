@@ -7,6 +7,7 @@ export const NOTIFICATION = {
   /* meta */
   title: "title",
   category: "category",
+  state: "state", // state / region / "Central"
   department: "department",
   total_vacancies: "total_vacancies",
 
@@ -67,6 +68,7 @@ export const NOTIFICATION = {
 export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.title,
   NOTIFICATION.category,
+  NOTIFICATION.state,
   NOTIFICATION.department,
   NOTIFICATION.total_vacancies,
   NOTIFICATION.type,
@@ -121,6 +123,7 @@ export const DETAIL_VIEW_NOTIFICATION = [
 export const HOME_PAGE_NOTIFICATION = [
   NOTIFICATION.title,
   NOTIFICATION.category,
+  NOTIFICATION.state,
   NOTIFICATION.approved_at,
   NOTIFICATION.start_date,
   NOTIFICATION.last_date_to_apply,
