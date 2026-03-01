@@ -2,7 +2,9 @@
 import {
   AuthFlowType,
   CognitoIdentityProviderClient,
+  ConfirmForgotPasswordCommand,
   ConfirmSignUpCommand,
+  ForgotPasswordCommand,
   InitiateAuthCommand,
   ResendConfirmationCodeCommand,
   SignUpCommand,
@@ -145,6 +147,62 @@ export async function resendConfirmationCode(email: string) {
       "resendConfirmationCode",
       error,
       "AWS Cognito resend confirmation code error",
+      "",
+      { email }
+    );
+    throw error;
+  }
+}
+
+export async function forgotPassword(email: string) {
+  if (!email) {
+    createThrowError(400, "BadRequest", "Email is required", { email });
+  }
+  const cmd = new ForgotPasswordCommand({
+    ClientId: process.env.COGNITO_CLIENT_ID!,
+    Username: email,
+  });
+  try {
+    const response = await cognito.send(cmd);
+    return response;
+  } catch (error: any) {
+    logErrorLocation(
+      "authService.ts",
+      "forgotPassword",
+      error,
+      "AWS Cognito forgot password error",
+      "",
+      { email }
+    );
+    throw error;
+  }
+}
+
+export async function resetPassword(
+  email: string,
+  code: string,
+  newPassword: string
+) {
+  if (!email || !code || !newPassword) {
+    createThrowError(400, "BadRequest", "Email, code and new password are required", {
+      email,
+    });
+  }
+  const cmd = new ConfirmForgotPasswordCommand({
+    ClientId: process.env.COGNITO_CLIENT_ID!,
+    Username: email,
+    ConfirmationCode: code,
+    Password: newPassword,
+  });
+  try {
+    const response = await cognito.send(cmd);
+    return response;
+  } catch (error: any) {
+    logErrorLocation(
+      "authService.ts",
+      "resetPassword",
+      error,
+      "AWS Cognito reset password error",
       "",
       { email }
     );

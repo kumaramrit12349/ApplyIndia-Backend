@@ -1,7 +1,9 @@
 import { Router, Request, Response } from "express";
 import {
   confirmSignUp,
+  forgotPassword,
   resendConfirmationCode,
+  resetPassword,
   signInUser,
   signUpUser,
 } from "../services/authService";
@@ -191,6 +193,65 @@ router.post("/resend", async (req: Request, res: Response) => {
     let status = 400;
     let message = error.message || "Failed to resend verification code";
     if (error.name === "UserNotFoundException") {
+      status = 404;
+      message = "User not found.";
+    }
+    return res.status(status).json({
+      status,
+      success: false,
+      message,
+      data: {},
+    });
+  }
+});
+
+
+// POST /api/auth/forgot-password
+router.post("/forgot-password", async (req: Request, res: Response) => {
+  const { email } = req.body;
+  try {
+    await forgotPassword(email);
+    return res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Reset code sent to your email.",
+      data: {},
+    });
+  } catch (error: any) {
+    let status = 400;
+    let message = error.message || "Failed to send reset code";
+    if (error.name === "UserNotFoundException") {
+      status = 404;
+      message = "User not found.";
+    }
+    return res.status(status).json({
+      status,
+      success: false,
+      message,
+      data: {},
+    });
+  }
+});
+
+// POST /api/auth/reset-password
+router.post("/reset-password", async (req: Request, res: Response) => {
+  const { email, code, newPassword } = req.body;
+  try {
+    await resetPassword(email, code, newPassword);
+    return res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Password reset successful. You can now log in.",
+      data: {},
+    });
+  } catch (error: any) {
+    let status = 400;
+    let message = error.message || "Failed to reset password";
+    if (error.name === "CodeMismatchException") {
+      message = "Invalid verification code.";
+    } else if (error.name === "ExpiredCodeException") {
+      message = "Verification code expired.";
+    } else if (error.name === "UserNotFoundException") {
       status = 404;
       message = "User not found.";
     }
