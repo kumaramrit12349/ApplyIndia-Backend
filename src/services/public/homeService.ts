@@ -127,9 +127,9 @@ export async function getNotificationsByCategory(
     if (normalizedCategory === "all") {
       let exclusiveStartKey = lastEvaluatedKeySk
         ? {
-            pk: TABLE_PK_MAPPER.Notification,
-            sk: lastEvaluatedKeySk,
-          }
+          pk: TABLE_PK_MAPPER.Notification,
+          sk: lastEvaluatedKeySk,
+        }
         : undefined;
 
       do {
@@ -244,5 +244,66 @@ export async function getNotificationsByCategory(
       "",
       { category, limit, lastEvaluatedKeySk, searchValue },
     );
+  }
+}
+
+// Fetch the 10 latest notifications across all categories
+export async function getLatestNotifications(): Promise<
+  Array<{ title: string; sk: string }>
+> {
+  try {
+    const items = await fetchDynamoDB<INotification>(
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      [
+        NOTIFICATION.sk,
+        NOTIFICATION.title,
+        NOTIFICATION.created_at,
+        NOTIFICATION.category,
+        NOTIFICATION.has_admit_card,
+        NOTIFICATION.has_syllabus,
+        NOTIFICATION.has_answer_key,
+        NOTIFICATION.has_result,
+        NOTIFICATION.approved_at,
+        NOTIFICATION.approved_by,
+        NOTIFICATION.type,
+      ],
+      {
+        [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+        [NOTIFICATION.approved_by]: "admin",
+      },
+      "#type = :type AND #approved_by = :approved_by",
+      undefined,
+      false // exclude archived
+    );
+
+    // Extra safety: ensure approved_at exists and is number
+    const approved = items.filter((n) => typeof n.approved_at === "number");
+
+    // Sort latest first
+    approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+
+    // Take top 10
+    const latest = approved.slice(0, 10).map((n) => {
+      const sk = n
+        .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+        .replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "");
+      return {
+        title: n.title || "",
+        sk,
+      };
+    });
+
+    return latest;
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getLatestNotifications",
+      error,
+      "DB error while fetching latest notifications (DynamoDB)",
+      "",
+      {},
+    );
+    throw error;
   }
 }

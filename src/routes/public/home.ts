@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getHomePageNotifications,
   getNotificationsByCategory,
+  getLatestNotifications,
 } from "../../services/public/homeService";
 import { getNotificationById } from "../../services/private/notificationService";
 
@@ -10,6 +11,19 @@ const router = Router();
 /******************************************************************************
  *                            PUBLIC ROUTES
  ******************************************************************************/
+// Latest 10 notifications
+router.get("/latest", async (_req, res) => {
+  try {
+    const latest = await getLatestNotifications();
+    res.json({ success: true, data: latest });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Database error",
+    });
+  }
+});
+
 // Home page notifications
 router.get("/home", async (_req, res) => {
   try {
