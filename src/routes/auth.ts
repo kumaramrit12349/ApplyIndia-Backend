@@ -6,6 +6,8 @@ import {
   resetPassword,
   signInUser,
   signUpUser,
+  updateProfile,
+  getUserProfile,
 } from "../services/authService";
 import { authenticateMe, isSubAllowed } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
@@ -124,7 +126,7 @@ router.post("/signin", async (req: Request, res: Response) => {
 });
 
 
-router.get("/me", authenticateMe, (req: Request, res: Response) => {
+router.get("/me", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
   return res.json({
     success: true,
@@ -133,9 +135,54 @@ router.get("/me", authenticateMe, (req: Request, res: Response) => {
       email: user.email,
       given_name: user.given_name,
       family_name: user.family_name,
-      // add more if present in ID token
     },
   });
+});
+
+router.get("/profile", authenticateMe, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    const fullProfile = await getUserProfile(user.sub);
+    return res.json({
+      success: true,
+      user: {
+        isAdmin: isSubAllowed(user?.sub) ? true : false,
+        email: user.email,
+        given_name: user.given_name,
+        family_name: user.family_name,
+        ...(fullProfile as object)
+      },
+    });
+  } catch (error: any) {
+    return res.status(error.code || 400).json({
+      status: error.code || 400,
+      success: false,
+      message: error.message || "Failed to fetch profile",
+      data: {},
+    });
+  }
+});
+
+router.put("/profile", authenticateMe, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const accessToken = req.cookies.accessToken;
+  const data = req.body;
+  try {
+    await updateProfile(accessToken, user.sub, data);
+    return res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Profile updated successfully",
+      data: {},
+    });
+  } catch (error: any) {
+    return res.status(error.code || 400).json({
+      status: error.code || 400,
+      success: false,
+      message: error.message || "Failed to update profile",
+      data: {},
+    });
+  }
 });
 
 router.post("/logout", (req: Request, res: Response) => {

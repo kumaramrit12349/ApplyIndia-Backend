@@ -9,8 +9,14 @@ import {
   ResendConfirmationCodeCommand,
   SignUpCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { createThrowError, logErrorLocation } from "../utils/errorUtils"; // Use your utility function for errors
+import { createThrowError, logErrorLocation } from "../utils/errorUtils";
 import { RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
+import { insertItemIntoDynamoDB } from "../dynamoDB_CRUD/insertData";
+import { ALL_TABLE_NAMES, TABLE_PK_MAPPER } from "../db_schema/shared/SharedConstant";
+import { IUser } from "../db_schema/User/UserInterface";
+import { updateItemDynamoDB } from "../dynamoDB_CRUD/updateData";
+import { fetchDynamoDB } from "../Interpreter/dynamoDB/fetchCalls";
+import { UpdateUserAttributesCommand } from "@aws-sdk/client-cognito-identity-provider";
 
 const cognito = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION,
@@ -48,6 +54,24 @@ export async function signUpUser(data: RegisterRequest) {
   const command = new SignUpCommand(input);
   try {
     const response = await cognito.send(command);
+
+    // Store in DynamoDB
+    if (response.UserSub) {
+      const userData = {
+        ...data,
+        sub: response.UserSub,
+      };
+      // remove password before storing in DynamoDB
+      delete (userData as any).password;
+
+      // Ensure state is uppercase if provided
+      if (userData.state) {
+        userData.state = userData.state.toUpperCase();
+      }
+
+      await insertItemIntoDynamoDB(ALL_TABLE_NAMES.User, userData);
+    }
+
     return response;
   } catch (error: any) {
     logErrorLocation(
@@ -206,6 +230,80 @@ export async function resetPassword(
       "",
       { email }
     );
+    throw error;
+  }
+}
+
+export async function updateProfile(accessToken: string, sub: string, data: Partial<IUser>) {
+  // 1. Update Cognito (only specific fields)
+  const cognitoAttributes = [];
+  if (data.given_name) cognitoAttributes.push({ Name: "given_name", Value: data.given_name });
+  if (data.family_name) cognitoAttributes.push({ Name: "family_name", Value: data.family_name });
+  if (data.gender) cognitoAttributes.push({ Name: "gender", Value: data.gender });
+
+  if (cognitoAttributes.length > 0) {
+    const cmd = new UpdateUserAttributesCommand({
+      AccessToken: accessToken,
+      UserAttributes: cognitoAttributes,
+    });
+    try {
+      await cognito.send(cmd);
+    } catch (error: any) {
+      logErrorLocation("authService.ts", "updateProfile (Cognito)", error, "AWS Cognito update error", "", { sub });
+      // We might want to continue even if Cognito update fails, or throw
+      // For now, if Cognito fails, we throw
+      throw error;
+    }
+  }
+
+  // 2. Update DynamoDB (all fields)
+  const pk = TABLE_PK_MAPPER.User;
+  const sk = `${TABLE_PK_MAPPER.User}${sub}`;
+
+  // Ensure state is uppercase if provided
+  if (data.state) {
+    data.state = data.state.toUpperCase();
+  }
+
+  // Build update expression for DynamoDB
+  const expressions: string[] = [];
+  const expressionAttributeValues: any = {};
+  const expressionAttributeNames: any = {};
+
+  Object.entries(data).forEach(([key, value], index) => {
+    if (key === "pk" || key === "sk" || key === "sub" || value === undefined) return;
+    const nameKey = `#field${index}`;
+    const valueKey = `:val${index}`;
+    expressions.push(`${nameKey} = ${valueKey}`);
+    expressionAttributeNames[nameKey] = key;
+    expressionAttributeValues[valueKey] = value;
+  });
+
+  if (expressions.length > 0) {
+    const updateItemParam = {
+      Key: { pk, sk },
+      UpdateExpression: "set " + expressions.join(", "),
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
+    };
+
+    try {
+      await updateItemDynamoDB(updateItemParam);
+    } catch (error: any) {
+      logErrorLocation("authService.ts", "updateProfile (DynamoDB)", error, "DynamoDB update error", "", { sub, data });
+      throw error;
+    }
+  }
+}
+
+export async function getUserProfile(sub: string) {
+  const pk = TABLE_PK_MAPPER.User;
+  const sk = `${TABLE_PK_MAPPER.User}${sub}`;
+  try {
+    const results = await fetchDynamoDB(ALL_TABLE_NAMES.User, sk);
+    return results.length > 0 ? (results[0] as IUser) : null;
+  } catch (error: any) {
+    logErrorLocation("authService.ts", "getUserProfile", error, "DynamoDB fetch error", "", { sub });
     throw error;
   }
 }

@@ -4,6 +4,11 @@ export interface RegisterRequest {
   given_name: string;
   family_name: string;
   gender: string;
+  dob?: string;
+  state?: string;
+  category?: string;
+  qualification?: string;
+  specialization?: string;
 }
 
 export interface IResponse<T> {

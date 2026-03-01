@@ -13,9 +13,10 @@ export async function updateItemDynamoDB(
   updateItemParam: any,
 ): Promise<Record<string, any>> {
   try {
+    const updateExpr = updateItemParam[DYNAMODB_KEYWORDS.UpdateExpression] || "set";
     updateItemParam[DYNAMODB_KEYWORDS.UpdateExpression] =
-      updateItemParam[DYNAMODB_KEYWORDS.UpdateExpression] +
-      ", " +
+      updateExpr +
+      (updateExpr.toLowerCase().startsWith("set") ? ", " : " set ") +
       `${INSERT_ITEM_MAPPER.modified_at} = :${INSERT_ITEM_MAPPER.modified_at}`;
     updateItemParam[DYNAMODB_KEYWORDS.ExpressionAttributeValues][
       `:${INSERT_ITEM_MAPPER.modified_at}`
@@ -33,7 +34,7 @@ export async function updateItemDynamoDB(
     };
     const dynamoDB = new DynamoDBClient(dynamoDBClient);
     const data = await dynamoDB.send(new UpdateItemCommand(params));
-    return unmarshall(data.Attributes);
+    return data.Attributes ? unmarshall(data.Attributes) : {};
   } catch (error) {
     logErrorLocation(
       "updateData.ts",

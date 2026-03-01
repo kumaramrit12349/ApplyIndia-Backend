@@ -133,8 +133,7 @@ export async function queryItemsWithLimitDynamoDB<T>(
       Limit: limit,
       ExclusiveStartKey: startKey ? marshall(startKey) : undefined,
     };
-    const dynamoDB = new DynamoDBClient(DynamoDBClient);
-    const result = await dynamoDB.send(new QueryCommand(params));
+    const result = await dynamoDBClient.send(new QueryCommand(params));
     if (result?.Items) {
       result.Items?.forEach((item) => {
         accumulated.push(unmarshall(item) as T);
