@@ -27,6 +27,14 @@ export const NOTIFICATION = {
   approved_at: "approved_at",
   approved_by: "approved_by",
   is_archived: "is_archived",
+  review_status: "review_status",
+
+  comment: {
+    comment_id: "comment_id",
+    reviewer_sub: "reviewer_sub",
+    reviewer_name: "reviewer_name",
+    comment_text: "comment_text",
+  },
 
   details: {
     short_description: "short_description",
@@ -118,6 +126,7 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.modified_at,
   NOTIFICATION.approved_at,
   NOTIFICATION.approved_by,
+  NOTIFICATION.review_status,
 ];
 
 export const HOME_PAGE_NOTIFICATION = [
@@ -140,6 +149,7 @@ export enum NOTIFICATION_TYPE {
   FEE = "FEE",
   ELIGIBILITY = "ELIGIBILITY",
   LINKS = "LINKS",
+  COMMENT = "COMMENT",
 }
 
 export enum NOTIFICATION_TYPE_MAPPER {
@@ -148,4 +158,5 @@ export enum NOTIFICATION_TYPE_MAPPER {
   FEE = "#FEE",
   ELIGIBILITY = "#ELIGIBILITY",
   LINKS = "#LINKS",
+  COMMENT = "#COMMENT",
 }

@@ -1,17 +1,62 @@
 import { Router } from "express";
-import { addCompleteNotification, approveNotification, archiveNotification, editCompleteNotification, getNotificationById, unarchiveNotification, viewNotifications } from "../../services/private/notificationService";
-import { authenticateTokenAndEmail } from "../../middlewares/authMiddleware";
+import {
+  addCompleteNotification,
+  addReviewComment,
+  approveNotification,
+  archiveNotification,
+  editCompleteNotification,
+  getNotificationById,
+  getReviewComments,
+  unarchiveNotification,
+  viewNotifications,
+} from "../../services/private/notificationService";
+import {
+  authenticateTokenAndEmail,
+  requireRole,
+} from "../../middlewares/authMiddleware";
+import { getUserProfile, getCognitoUserEmail } from "../../services/authService";
 
 const router = Router();
 router.use(authenticateTokenAndEmail);
 
+/**
+ * Helper: fetch the user's display name from their DynamoDB profile.
+ * Returns "Given Family (email)" or falls back to the role string.
+ */
+async function getDisplayName(req: any): Promise<string> {
+  try {
+    const sub = req.user?.sub;
+    if (!sub) return req.adminRole || "Unknown";
+    const profile = await getUserProfile(sub);
+    if (profile) {
+      const name = [profile.given_name, profile.family_name]
+        .filter(Boolean)
+        .join(" ");
+
+      let email = profile.email;
+      if (!email) {
+        email = await getCognitoUserEmail(sub) || "";
+      }
+
+      if (name) {
+        return email ? `${name} (${email})` : name;
+      }
+      return email || req.adminRole || "Unknown";
+    }
+    const fallbackEmail = await getCognitoUserEmail(sub);
+    return fallbackEmail || req.adminRole || "Unknown";
+  } catch {
+    return req.adminRole || "Unknown";
+  }
+}
+
 /******************************************************************************
  *                            ADMIN ROUTES
- *        (Protected by Cognito Authorizer at API Gateway)
+ *        Role guards applied per-route via requireRole middleware
  ******************************************************************************/
 
-// Add notification
-router.post("/add", async (req, res) => {
+// Add notification — Creator, Admin
+router.post("/add", requireRole("creator", "admin"), async (req, res) => {
   try {
     const result = await addCompleteNotification(req.body);
     res.json({ success: true, data: result });
@@ -24,7 +69,7 @@ router.post("/add", async (req, res) => {
   }
 });
 
-// View all notifications
+// View all notifications — All roles
 router.get("/view", async (_req, res) => {
   try {
     const notifications = await viewNotifications();
@@ -37,7 +82,7 @@ router.get("/view", async (_req, res) => {
   }
 });
 
-// Get notification by ID
+// Get notification by ID — All roles
 router.get("/getById/:id", async (req, res) => {
   try {
     const notification = await getNotificationById(req.params.id);
@@ -47,7 +92,9 @@ router.get("/getById/:id", async (req, res) => {
         error: "Notification not found",
       });
     }
-    res.json({ success: true, notification });
+    // Also fetch review comments
+    const comments = await getReviewComments(req.params.id);
+    res.json({ success: true, notification, comments });
   } catch (err) {
     res.status(500).json({
       success: false,
@@ -56,60 +103,123 @@ router.get("/getById/:id", async (req, res) => {
   }
 });
 
-// Edit notification
-router.put("/edit/:id", async (req, res) => {
-  try {
-    const notification = await editCompleteNotification(
-      req.params.id,
-      req.body
-    );
-    res.json({ success: true, notification });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: "Database error",
-    });
+// Edit notification — Creator, Admin
+router.put(
+  "/edit/:id",
+  requireRole("creator", "admin"),
+  async (req, res) => {
+    try {
+      const notification = await editCompleteNotification(
+        req.params.id,
+        req.body
+      );
+      res.json({ success: true, notification });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: "Database error",
+      });
+    }
   }
-});
+);
 
-// Approve notification
-router.patch("/approve/:id", async (req, res) => {
-  try {
-    const notification = await approveNotification(
-      req.params.id,
-      "admin"
-    );
-    res.json({ success: true, notification });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: "Database error",
-    });
+// Approve notification — Reviewer, Admin
+router.patch(
+  "/approve/:id",
+  requireRole("reviewer", "admin"),
+  async (req: any, res) => {
+    try {
+      const approverName = await getDisplayName(req);
+      const notification = await approveNotification(
+        req.params.id,
+        approverName
+      );
+      res.json({ success: true, notification });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: "Database error",
+      });
+    }
   }
-});
+);
 
-// Archive notification
-router.delete("/delete/:id", async (req, res) => {
-  try {
-    const notification = await archiveNotification(req.params.id);
-    res.json({ success: true, notification });
-  } catch (err) {
-    res.status(500).json({
-      success: false,
-      error: "Database error",
-    });
+// Archive notification — Admin only
+router.delete(
+  "/delete/:id",
+  requireRole("admin"),
+  async (req, res) => {
+    try {
+      const notification = await archiveNotification(req.params.id);
+      res.json({ success: true, notification });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: "Database error",
+      });
+    }
   }
-});
+);
 
-// Unarchive notification
-router.patch("/unarchive/:id", async (req, res) => {
+// Unarchive notification — Admin only
+router.patch(
+  "/unarchive/:id",
+  requireRole("admin"),
+  async (req, res) => {
+    try {
+      const notification = await unarchiveNotification(req.params.id);
+      res.json({ success: true, notification });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: "Failed to unarchive",
+      });
+    }
+  }
+);
+
+// Add review comment — Reviewer, Admin
+// Every comment automatically marks the notification as "changes_requested"
+router.post(
+  "/comment/:id",
+  requireRole("reviewer", "admin"),
+  async (req: any, res) => {
+    try {
+      const { comment_text } = req.body;
+      if (!comment_text || !comment_text.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: "Comment text is required",
+        });
+      }
+      const reviewerSub = req.user?.sub || "unknown";
+      const reviewerName = await getDisplayName(req);
+      const comment = await addReviewComment(
+        req.params.id,
+        reviewerSub,
+        reviewerName,
+        comment_text.trim(),
+        true // always request changes when commenting
+      );
+      res.json({ success: true, comment });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: "Failed to add comment",
+      });
+    }
+  }
+);
+
+// Get review comments — All roles
+router.get("/comments/:id", async (req, res) => {
   try {
-    const notification = await unarchiveNotification(req.params.id);
-    res.json({ success: true, notification });
+    const comments = await getReviewComments(req.params.id);
+    res.json({ success: true, comments });
   } catch (err) {
     res.status(500).json({
       success: false,
-      error: "Failed to unarchive",
+      error: "Failed to fetch comments",
     });
   }
 });

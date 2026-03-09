@@ -16,6 +16,30 @@ async function getKey(header: any, callback: any) {
   }
 }
 
+/* ======================== ROLE SYSTEM ======================== */
+
+export type AdminRole = "creator" | "reviewer" | "admin";
+
+/**
+ * Map of Cognito `sub` → admin role.
+ * Add user subs here to grant admin dashboard access.
+ */
+const ADMIN_ROLES: Record<string, AdminRole> = {
+  "91539dea-c071-70a1-f14c-e99807a1d727": "admin",
+  "c1931d1a-d061-70eb-f546-5f09ee9f0e59": "creator",
+  "0193cd7a-0061-700a-6670-f5ead95005d3": "reviewer",
+};
+
+/** Returns the admin role for a given sub, or null if not an admin user. */
+export const getAdminRole = (sub: string): AdminRole | null =>
+  ADMIN_ROLES[sub] ?? null;
+
+/** Legacy helper — checks if sub has any admin role */
+export const isSubAllowed = (sub: string): boolean =>
+  !!ADMIN_ROLES[sub];
+
+/* ======================== MIDDLEWARE ======================== */
+
 // For protecting APIs with the access token
 export const authenticateToken = (req: any, res: any, next: any) => {
   const accessToken = req?.cookies?.accessToken;
@@ -58,13 +82,10 @@ export const authenticateMe = (req: any, res: any, next: any) => {
   );
 };
 
-const ALLOWED_SUB = ["91539dea-c071-70a1-f14c-e99807a1d727"];
-
-export const isSubAllowed = (sub: string): boolean => {
-  if (!sub) return false;
-  return ALLOWED_SUB.includes(sub);
-};
-
+/**
+ * Authenticate access token AND verify the user has an admin role.
+ * Attaches `req.adminRole` for downstream route handlers.
+ */
 export const authenticateTokenAndEmail = (req: any, res: any, next: any) => {
   const accessToken = req?.cookies?.accessToken;
   if (!accessToken) {
@@ -79,11 +100,30 @@ export const authenticateTokenAndEmail = (req: any, res: any, next: any) => {
         console.error("JWT verify error (accessToken):", err);
         return res.status(403).json({ error: "Invalid token" });
       }
-      if (!isSubAllowed(decoded?.sub)) {
+      const role = getAdminRole(decoded?.sub);
+      if (!role) {
         return res.status(403).json({ error: "You need Admin Access for it!" });
       }
       req.user = decoded;
+      req.adminRole = role;
       next();
     },
   );
+};
+
+/**
+ * Role guard middleware factory.
+ * Usage: router.post("/add", requireRole("creator", "admin"), handler)
+ * Must be used AFTER authenticateTokenAndEmail.
+ */
+export const requireRole = (...allowedRoles: AdminRole[]) => {
+  return (req: any, res: any, next: any) => {
+    const role: AdminRole | undefined = req.adminRole;
+    if (!role || !allowedRoles.includes(role)) {
+      return res.status(403).json({
+        error: `Access denied. Required role: ${allowedRoles.join(" or ")}`,
+      });
+    }
+    next();
+  };
 };

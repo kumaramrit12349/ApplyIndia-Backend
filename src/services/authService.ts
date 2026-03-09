@@ -8,6 +8,7 @@ import {
   InitiateAuthCommand,
   ResendConfirmationCodeCommand,
   SignUpCommand,
+  AdminGetUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { createThrowError, logErrorLocation } from "../utils/errorUtils";
 import { RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
@@ -305,5 +306,20 @@ export async function getUserProfile(sub: string) {
   } catch (error: any) {
     logErrorLocation("authService.ts", "getUserProfile", error, "DynamoDB fetch error", "", { sub });
     throw error;
+  }
+}
+
+export async function getCognitoUserEmail(sub: string): Promise<string | undefined> {
+  const cmd = new AdminGetUserCommand({
+    UserPoolId: process.env.COGNITO_USER_POOL_ID!,
+    Username: sub,
+  });
+  try {
+    const response = await cognito.send(cmd);
+    const emailAttr = response.UserAttributes?.find(attr => attr.Name === "email");
+    return emailAttr?.Value;
+  } catch (error) {
+    console.error("Cognito AdminGetUser error:", error);
+    return undefined;
   }
 }

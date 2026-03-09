@@ -7,6 +7,7 @@ import {
 import {
   INotification,
   INotificationListItem,
+  IReviewComment,
 } from "../../db_schema/Notification/NotificationInterface";
 import { INVALID_INPUT } from "../../db_schema/shared/ErrorMessage";
 import {
@@ -22,6 +23,7 @@ import {
   toEpoch,
 } from "../../library/util";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { getUserProfile, getCognitoUserEmail } from "../authService";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: INotification) {
@@ -64,6 +66,7 @@ export async function addCompleteNotification(data: INotification) {
       has_answer_key: data?.has_answer_key ?? false,
       is_archived: false,
       approved_at: null,
+      review_status: "pending",
       /**
        * ========================= GSI1 DESIGN =========================
        *
@@ -197,6 +200,7 @@ export async function viewNotifications(): Promise<INotificationListItem[]> {
         NOTIFICATION.approved_by,
         NOTIFICATION.type,
         NOTIFICATION.is_archived,
+        NOTIFICATION.review_status,
       ],
       { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
       "#type = :type",
@@ -251,6 +255,137 @@ export async function getNotificationById(
       "DB error while fetching notification by id (DynamoDB)",
       "",
       { id },
+    );
+    throw error;
+  }
+}
+
+// Get review comments for a notification
+export async function getReviewComments(
+  notificationId: string,
+): Promise<IReviewComment[]> {
+  try {
+    if (!notificationId) {
+      throw new Error("Invalid notification id");
+    }
+    const pk = TABLE_PK_MAPPER.Notification;
+    const skPrefix = `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.COMMENT}`;
+    const items = await fetchDynamoDB<any>(
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      undefined,
+      { [NOTIFICATION.type]: NOTIFICATION_TYPE.COMMENT },
+      "#type = :type",
+      undefined,
+      undefined,
+      skPrefix,
+    );
+    let comments = (items || [])
+      .map((item: any) => ({
+        comment_id: item.comment_id,
+        reviewer_sub: item.reviewer_sub,
+        reviewer_name: item.reviewer_name,
+        comment_text: item.comment_text,
+        created_at: item.created_at,
+      }))
+      .sort((a: IReviewComment, b: IReviewComment) => b.created_at - a.created_at);
+
+    // Enrich reviewer names for old comments where reviewer_name might be a UUID or missing
+    comments = await Promise.all(
+      comments.map(async (c: IReviewComment) => {
+        if (!c.reviewer_name || c.reviewer_name === c.reviewer_sub || c.reviewer_name.length === 36) {
+          try {
+            const profile = await getUserProfile(c.reviewer_sub);
+            if (profile) {
+              const name = [profile.given_name, profile.family_name]
+                .filter(Boolean)
+                .join(" ");
+              let email = profile.email;
+              if (!email) {
+                email = await getCognitoUserEmail(c.reviewer_sub) || "";
+              }
+              if (name) {
+                c.reviewer_name = email ? `${name} (${email})` : name;
+              } else if (email) {
+                c.reviewer_name = email;
+              }
+            } else {
+              const email = await getCognitoUserEmail(c.reviewer_sub);
+              if (email) {
+                c.reviewer_name = email;
+              }
+            }
+          } catch (e) {
+            // ignore fetch errors
+          }
+        }
+        return c;
+      })
+    );
+
+    return comments;
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getReviewComments",
+      error,
+      "DB error while fetching review comments (DynamoDB)",
+      "",
+      { notificationId },
+    );
+    throw error;
+  }
+}
+
+// Add a review comment to a notification
+export async function addReviewComment(
+  notificationId: string,
+  reviewerSub: string,
+  reviewerName: string,
+  commentText: string,
+  requestChanges: boolean = false,
+): Promise<IReviewComment> {
+  try {
+    if (!notificationId || !commentText) {
+      throw new Error("Invalid comment input");
+    }
+    const pk = TABLE_PK_MAPPER.Notification;
+    const now = Date.now();
+    const commentId = generateId();
+    const commentItem = {
+      pk,
+      sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.COMMENT}#${commentId}`,
+      type: NOTIFICATION_TYPE.COMMENT,
+      notification_id: notificationId,
+      comment_id: commentId,
+      reviewer_sub: reviewerSub,
+      reviewer_name: reviewerName,
+      comment_text: commentText,
+      created_at: now,
+    };
+    await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [commentItem]);
+
+    // If requesting changes, update review_status on the META item
+    if (requestChanges) {
+      const metaSk = `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.META}`;
+      await updateDynamoDB(pk, metaSk, { review_status: "changes_requested" });
+    }
+
+    return {
+      comment_id: commentId,
+      reviewer_sub: reviewerSub,
+      reviewer_name: reviewerName,
+      comment_text: commentText,
+      created_at: now,
+    };
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "addReviewComment",
+      error,
+      "DB error while adding review comment (DynamoDB)",
+      "",
+      { notificationId, commentText },
     );
     throw error;
   }
@@ -363,6 +498,19 @@ export async function editCompleteNotification(
       );
     }
     await Promise.all(updates);
+
+    // If the notification had changes requested, reset to pending after edit
+    const pk2 = TABLE_PK_MAPPER.Notification;
+    const metaSk = `${pk2}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
+    const existingArr = await fetchDynamoDB<any>(
+      ALL_TABLE_NAME.Notification,
+      metaSk
+    );
+    const existing = existingArr[0];
+    if (existing?.review_status === "changes_requested") {
+      await updateDynamoDB(pk2, metaSk, { review_status: "pending" });
+    }
+
     return true;
   } catch (error) {
     logErrorLocation(
@@ -395,6 +543,7 @@ export async function approveNotification(
     const attributesToUpdate = {
       approved_at: now,
       approved_by: approvedBy,
+      review_status: "approved",
     };
     await updateDynamoDB(pk, sk, attributesToUpdate);
     return attributesToUpdate;

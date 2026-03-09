@@ -9,7 +9,7 @@ import {
   updateProfile,
   getUserProfile,
 } from "../services/authService";
-import { authenticateMe, isSubAllowed } from "../middlewares/authMiddleware";
+import { authenticateMe, getAdminRole } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 
 const router = Router();
@@ -128,10 +128,12 @@ router.post("/signin", async (req: Request, res: Response) => {
 
 router.get("/me", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
+  const adminRole = getAdminRole(user?.sub);
   return res.json({
     success: true,
     user: {
-      isAdmin: isSubAllowed(user?.sub) ? true : false,
+      isAdmin: !!adminRole,
+      adminRole,
       email: user.email,
       given_name: user.given_name,
       family_name: user.family_name,
@@ -141,12 +143,14 @@ router.get("/me", authenticateMe, async (req: Request, res: Response) => {
 
 router.get("/profile", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
+  const adminRole = getAdminRole(user?.sub);
   try {
     const fullProfile = await getUserProfile(user.sub);
     return res.json({
       success: true,
       user: {
-        isAdmin: isSubAllowed(user?.sub) ? true : false,
+        isAdmin: !!adminRole,
+        adminRole,
         email: user.email,
         given_name: user.given_name,
         family_name: user.family_name,

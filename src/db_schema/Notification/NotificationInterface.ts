@@ -38,6 +38,8 @@ export interface INotification {
   is_archived?: boolean;
   created_at?: number;
   modified_at?: number;
+  review_status?: 'pending' | 'changes_requested' | 'approved';
+  review_comments?: IReviewComment[];
 }
 
 export interface INotificationDetails {
@@ -85,6 +87,7 @@ export interface INotificationListItem {
   approved_at: number;
   approved_by: string;
   is_archived: boolean;
+  review_status?: 'pending' | 'changes_requested' | 'approved';
 }
 
 export type INotificationItem =
@@ -92,4 +95,13 @@ export type INotificationItem =
   | { type: NOTIFICATION_TYPE.DETAILS }
   | { type: NOTIFICATION_TYPE.FEE }
   | { type: NOTIFICATION_TYPE.ELIGIBILITY }
-  | { type: NOTIFICATION_TYPE.LINKS };
+  | { type: NOTIFICATION_TYPE.LINKS }
+  | { type: NOTIFICATION_TYPE.COMMENT };
+
+export interface IReviewComment {
+  comment_id: string;
+  reviewer_sub: string;
+  reviewer_name: string;
+  comment_text: string;
+  created_at: number;
+}
