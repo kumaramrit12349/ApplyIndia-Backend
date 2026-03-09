@@ -304,6 +304,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
   attributesToGet?: string[],
   queryFilter?: IKeyValues,
   filterString?: string,
+  scanIndexForward: boolean = true
 ): Promise<{ results: T[]; lastEvaluatedKey?: { pk: string; sk: string } }> {
   try {
     const pkValue = TABLE_PK_MAPPER[tableName];
@@ -373,8 +374,12 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
       for (const [key, value] of Object.entries(queryFilter)) {
         const safeKey = key.includes(".") ? key.replace(".", "_") : key;
 
-        expressionAttributeNames[`#${safeKey}`] = key;
-        expressionAttributeValues[`:${safeKey}`] = value;
+        if (filterString.includes(`#${safeKey}`) || projectionExpression.includes(`#${safeKey}`)) {
+          expressionAttributeNames[`#${safeKey}`] = key;
+        }
+        if (filterString.includes(`:${safeKey}`)) {
+          expressionAttributeValues[`:${safeKey}`] = value;
+        }
       }
     }
     /* ------------------------------------
@@ -393,6 +398,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
         projectionExpression.length > 0
           ? projectionExpression.join(",")
           : undefined,
+      ScanIndexForward: scanIndexForward,
     };
     /* ------------------------------------
      * 5. Query with pagination

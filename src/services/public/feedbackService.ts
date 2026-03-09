@@ -20,6 +20,7 @@ export async function addFeedbackToDB(
       name: feedback.name,
       email: feedback.email,
       message: feedback.message,
+      created_at: Date.now(),
     };
     await insertDataDynamoDB(
       ALL_TABLE_NAMES.Feedback,
