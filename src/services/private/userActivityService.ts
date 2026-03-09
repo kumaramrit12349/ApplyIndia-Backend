@@ -29,8 +29,8 @@ function isValidStatusTransition(
     newStatus: USER_ACTIVITY_STATUS
 ): boolean {
     if (!currentStatus) {
-        // First step must be APPLIED
-        return newStatus === USER_ACTIVITY_STATUS.APPLIED;
+        // First step must be WISHLISTED or APPLIED
+        return newStatus === USER_ACTIVITY_STATUS.WISHLISTED || newStatus === USER_ACTIVITY_STATUS.APPLIED;
     }
     const currentIndex = ACTIVITY_STATUS_ORDER.indexOf(currentStatus);
     const newIndex = ACTIVITY_STATUS_ORDER.indexOf(newStatus);
@@ -125,9 +125,11 @@ export async function upsertUserActivity(
             );
         }
 
-        // Check attempt limit (only on first mark — when going from nothing to APPLIED)
+        // Check attempt limit (only on first mark — when going from nothing or WISHLISTED to APPLIED)
         let attemptCount = existing?.attempt_count || 0;
-        if (!existing && status === USER_ACTIVITY_STATUS.APPLIED) {
+        const isFirstApply = status === USER_ACTIVITY_STATUS.APPLIED && (!existing || existing.status === USER_ACTIVITY_STATUS.WISHLISTED);
+
+        if (isFirstApply) {
             const currentAttempts = await getAttemptCount(pk, notificationSk);
             if (currentAttempts >= MAX_ACTIVITY_ATTEMPTS) {
                 throw new Error(

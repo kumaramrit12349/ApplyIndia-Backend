@@ -4,6 +4,7 @@
  * Each step can only be reached after completing the previous one.
  */
 export enum USER_ACTIVITY_STATUS {
+  WISHLISTED = 0,
   APPLIED = 1,
   ADMIT_CARD = 2,
   RESULT = 3,
@@ -15,6 +16,7 @@ export enum USER_ACTIVITY_STATUS {
  * Index 0 = first step, Index 3 = final step.
  */
 export const ACTIVITY_STATUS_ORDER: USER_ACTIVITY_STATUS[] = [
+  USER_ACTIVITY_STATUS.WISHLISTED,
   USER_ACTIVITY_STATUS.APPLIED,
   USER_ACTIVITY_STATUS.ADMIT_CARD,
   USER_ACTIVITY_STATUS.RESULT,

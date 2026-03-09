@@ -25,7 +25,7 @@ router.post("/track", async (req, res) => {
 
         const { notificationSk, title, category, status } = req.body;
 
-        if (!notificationSk || !title || !status) {
+        if (!notificationSk || !title || status === undefined || status === null) {
             return res.status(400).json({ success: false, error: "Missing required fields" });
         }
 
