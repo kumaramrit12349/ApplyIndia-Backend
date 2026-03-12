@@ -194,6 +194,7 @@ export async function viewNotifications(): Promise<INotificationListItem[]> {
         NOTIFICATION.pk,
         NOTIFICATION.sk,
         NOTIFICATION.title,
+        NOTIFICATION.state,
         NOTIFICATION.category,
         NOTIFICATION.created_at,
         NOTIFICATION.approved_at,

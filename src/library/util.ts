@@ -13,6 +13,7 @@ export function buildNotificationDetail(items: any[]): any {
       Object.assign(result, {
         sk: item.sk,
         title: item.title,
+        state: item.state,
         category: item.category,
         department: item.department,
         total_vacancies: item.total_vacancies,
