@@ -184,10 +184,53 @@ export async function addCompleteNotification(data: INotification) {
   }
 }
 
-// View all notifications (excluding archived)
-export async function viewNotifications(): Promise<INotificationListItem[]> {
+// View all notifications (excluding archived) with optional search + time filtering
+export async function viewNotifications(
+  search?: string,
+  timeRange?: string,
+): Promise<INotificationListItem[]> {
   try {
-    const notifications = await fetchDynamoDB<INotificationListItem>(
+    // Build filter expressions
+    let filterString = "#type = :type";
+    const queryFilter: Record<string, any> = {
+      [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+    };
+
+    // Time-range filtering on created_at (same pattern as feedbackService)
+    if (timeRange && timeRange !== "all") {
+      const now = new Date();
+      let startTimeMillis = 0;
+
+      switch (timeRange) {
+        case "today":
+          now.setHours(0, 0, 0, 0);
+          startTimeMillis = now.getTime();
+          break;
+        case "last_week":
+          startTimeMillis = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+          break;
+        case "last_month":
+          now.setMonth(now.getMonth() - 1);
+          startTimeMillis = now.getTime();
+          break;
+        case "last_3_months":
+          now.setMonth(now.getMonth() - 3);
+          startTimeMillis = now.getTime();
+          break;
+        case "last_6_months":
+          now.setMonth(now.getMonth() - 6);
+          startTimeMillis = now.getTime();
+          break;
+      }
+
+      if (startTimeMillis > 0) {
+        filterString += " AND #created_at >= :startTime";
+        queryFilter["created_at"] = "created_at";
+        queryFilter["startTime"] = startTimeMillis;
+      }
+    }
+
+    let notifications = await fetchDynamoDB<INotificationListItem>(
       ALL_TABLE_NAME.Notification,
       undefined,
       [
@@ -203,9 +246,18 @@ export async function viewNotifications(): Promise<INotificationListItem[]> {
         NOTIFICATION.is_archived,
         NOTIFICATION.review_status,
       ],
-      { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
-      "#type = :type",
+      queryFilter,
+      filterString,
     );
+
+    // Post-fetch search filtering (case-insensitive title substring match)
+    if (search && search.trim()) {
+      const searchLower = search.trim().toLowerCase();
+      notifications = notifications.filter((n) =>
+        n.title?.toLowerCase().includes(searchLower),
+      );
+    }
+
     return notifications.sort((a, b) => b.created_at - a.created_at);
   } catch (error) {
     logErrorLocation(

@@ -70,9 +70,10 @@ router.post("/add", requireRole("creator", "admin"), async (req, res) => {
 });
 
 // View all notifications — All roles
-router.get("/view", async (_req, res) => {
+router.post("/view", async (req, res) => {
   try {
-    const notifications = await viewNotifications();
+    const { search, timeRange } = req.body || {};
+    const notifications = await viewNotifications(search, timeRange);
     res.json({ success: true, notifications });
   } catch (err) {
     res.status(500).json({
