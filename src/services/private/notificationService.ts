@@ -188,6 +188,7 @@ export async function addCompleteNotification(data: INotification) {
 export async function viewNotifications(
   search?: string,
   timeRange?: string,
+  category?: string,
 ): Promise<INotificationListItem[]> {
   try {
     // Build filter expressions
@@ -228,6 +229,11 @@ export async function viewNotifications(
         queryFilter["created_at"] = "created_at";
         queryFilter["startTime"] = startTimeMillis;
       }
+    }
+
+    if (category && category !== "all") {
+      filterString += " AND #category = :category";
+      queryFilter["category"] = category;
     }
 
     let notifications = await fetchDynamoDB<INotificationListItem>(

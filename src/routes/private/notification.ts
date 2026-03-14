@@ -72,8 +72,8 @@ router.post("/add", requireRole("creator", "admin"), async (req, res) => {
 // View all notifications — All roles
 router.post("/view", async (req, res) => {
   try {
-    const { search, timeRange } = req.body || {};
-    const notifications = await viewNotifications(search, timeRange);
+    const { search, timeRange, category } = req.body || {};
+    const notifications = await viewNotifications(search, timeRange, category);
     res.json({ success: true, notifications });
   } catch (err) {
     res.status(500).json({
