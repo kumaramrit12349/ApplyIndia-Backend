@@ -1,7 +1,9 @@
 import { Router, Request, Response } from "express";
 import {
   confirmSignUp,
+  exchangeGoogleCode,
   forgotPassword,
+  getOrCreateGoogleUser,
   resendConfirmationCode,
   resetPassword,
   signInUser,
@@ -11,6 +13,7 @@ import {
 } from "../services/authService";
 import { authenticateMe, getAdminRole } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
+import { COGNITO_CONFIG } from "../config/env";
 
 const router = Router();
 
@@ -315,4 +318,98 @@ router.post("/reset-password", async (req: Request, res: Response) => {
   }
 });
 
+
+// ─── GOOGLE OAUTH ────────────────────────────────────────────────────────────
+
+/**
+ * GET /auth/google
+ * Redirects the browser to the Cognito Hosted UI login page with Google as
+ * the identity provider.
+ */
+router.get("/google", (_req: Request, res: Response) => {
+  const { domain, clientId, googleCallbackUrl } = COGNITO_CONFIG;
+
+  if (!domain || !clientId || !googleCallbackUrl) {
+    return res.status(500).json({
+      success: false,
+      message: "Google sign-in is not configured. Please contact support.",
+    });
+  }
+
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: googleCallbackUrl,
+    scope: "openid email profile",
+    identity_provider: "Google",
+  });
+
+  return res.redirect(`${domain}/oauth2/authorize?${params.toString()}`);
+});
+
+/**
+ * GET /auth/google/callback
+ * Cognito redirects here after the user authenticates with Google.
+ * 1. Exchange the authorization code for tokens.
+ * 2. Ensure the user exists in DynamoDB (create if first time).
+ * 3. Set the same httpOnly cookies as the email sign-in flow.
+ * 4. Redirect to the frontend home page.
+ */
+router.get("/google/callback", async (req: Request, res: Response) => {
+  const { code, error } = req.query as { code?: string; error?: string };
+  const frontendUrl = (COGNITO_CONFIG.frontendUrl || "").replace(/\/+$/, "");
+
+  if (error || !code) {
+    console.error("Google OAuth callback error:", error);
+    return res.redirect(
+      `${frontendUrl}/auth/callback?auth_error=${encodeURIComponent(error || "google_auth_failed")}`
+    );
+  }
+
+  try {
+    // Exchange authorization code for tokens
+    const tokens = await exchangeGoogleCode(code);
+
+    // Ensure user exists in DynamoDB; create if first time
+    await getOrCreateGoogleUser(tokens.id_token);
+
+    const isProd = process.env.NODE_ENV === "production";
+
+    // Set the same cookies as the email sign-in flow
+    res.cookie("accessToken", tokens.access_token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 60 * 60 * 1000,
+      path: "/",
+    });
+    res.cookie("idToken", tokens.id_token, {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
+      maxAge: 60 * 60 * 1000,
+      path: "/",
+    });
+    if (tokens.refresh_token) {
+      res.cookie("refreshToken", tokens.refresh_token, {
+        httpOnly: true,
+        secure: isProd,
+        sameSite: isProd ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: "/",
+      });
+    }
+
+    // Redirect to frontend — the /auth/callback page will pick up the session
+    return res.redirect(`${frontendUrl}/auth/callback`);
+  } catch (err: any) {
+    console.error("Google OAuth callback failed:", err);
+    const errorMessage = err.message || "google_auth_failed";
+    return res.redirect(
+      `${frontendUrl}/auth/callback?auth_error=${encodeURIComponent(errorMessage)}`
+    );
+  }
+});
+
 export default router;
+

@@ -23,4 +23,6 @@ export interface IUser {
     is_verified?: boolean;
     created_at?: number;
     modified_at?: number;
+    auth_provider?: 'email' | 'google';
+    sub?: string;
 }
