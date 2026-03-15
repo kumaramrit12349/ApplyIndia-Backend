@@ -203,6 +203,7 @@ export async function getNotificationsByCategory(
           NOTIFICATION.title,
           NOTIFICATION.created_at,
           NOTIFICATION.category,
+          NOTIFICATION.approved_at,
         ],
         limit,
         exclusiveStartKey,
@@ -210,7 +211,7 @@ export async function getNotificationsByCategory(
       });
 
       let items = result.results;
-
+      items = items?.filter(item => item.approved_at);
       if (search) {
         items = items.filter((item) =>
           item.title?.toLowerCase().includes(search),
