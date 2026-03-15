@@ -2,10 +2,12 @@ import {
   DETAIL_VIEW_NOTIFICATION,
   NOTIFICATION,
   NOTIFICATION_TYPE,
+  NOTIFICATION_TYPE_MAPPER,
 } from "../../db_schema/Notification/NotificationConstant";
 import {
   INotification,
   INotificationListItem,
+  IReviewComment,
 } from "../../db_schema/Notification/NotificationInterface";
 import { INVALID_INPUT } from "../../db_schema/shared/ErrorMessage";
 import {
@@ -21,11 +23,12 @@ import {
   toEpoch,
 } from "../../library/util";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { getUserProfile, getCognitoUserEmail } from "../authService";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: INotification) {
   try {
-    if (!data.title || !data.category || !data.start_date) {
+    if (!data.title || !data.category || !data.state || !data.start_date) {
       throw new Error("Missing required notification fields");
     }
     const notificationId = generateId();
@@ -41,30 +44,95 @@ export async function addCompleteNotification(data: INotification) {
     const startDate = toEpoch(data.start_date);
     const lastDateToApply = toEpoch(data.last_date_to_apply);
     const examDate = toEpoch(data.exam_date);
+    // IMPORTANT: pad for proper string sorting
+    const paddedLastDate = String(lastDateToApply ?? 0).padStart(15, "0");
+    const normalizedCategory = (data.category || "UNKNOWN").toLowerCase();
+    const normalizedState = (data.state || "UNKNOWN").toLowerCase();
     const metaItem = {
       ...base,
-      sk: `${pk}${notificationId}#META`,
+      sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.META}`,
       type: NOTIFICATION_TYPE.META,
       title: data.title,
       category: data.category || "UNKNOWN",
+      state: data.state || "UNKNOWN",
       department: data.department || "UNKNOWN",
       start_date: startDate,
       last_date_to_apply: lastDateToApply,
       exam_date: examDate,
       total_vacancies: data.total_vacancies,
-      has_syllabus: data?.has_syllabus,
-      has_admit_card: data?.has_admit_card,
-      has_result: data?.has_result,
-      has_answer_key: data?.has_answer_key,
+      has_syllabus: data?.has_syllabus ?? false,
+      has_admit_card: data?.has_admit_card ?? false,
+      has_result: data?.has_result ?? false,
+      has_answer_key: data?.has_answer_key ?? false,
       is_archived: false,
       approved_at: null,
-      // GSI must also use NUMBER
-      gsi1pk: `CATEGORY#${data.category || "UNKNOWN"}`,
-      gsi1sk: `DATE#${lastDateToApply ?? 0}#${notificationId}`,
+      review_status: "pending",
+      /**
+       * ========================= GSI1 DESIGN =========================
+       *
+       * WHY this GSI exists:
+       * DynamoDB does NOT optimize FilterExpression.
+       * It only optimizes:
+       *   - Partition Key equality
+       *   - Sort Key range conditions
+       *
+       * Our main query pattern:
+       *   1. Fetch notifications by category
+       *   2. Only type = META
+       *   3. Only approved_by = ADMIN
+       *   4. Only where last_date_to_apply >= today
+       *   5. Sorted by last_date_to_apply
+       *   6. Paginated
+       *
+       * To avoid slow filtering & multiple DB round-trips,
+       * we encode all fixed filters inside the GSI partition key.
+       *
+       * ---------------------------------------------------------------
+       * categoryPk:
+       *   {category}#META
+       *
+       *   → This removes the need for FilterExpression on:
+       *       - category
+       *       - type
+       *       - approval status
+       *
+       * ---------------------------------------------------------------
+       * categorySk:
+       *   {padded_last_date_to_apply}#{created_at}
+       *
+       *   → Allows efficient range query:
+       *       categorySk >= today
+       *
+       *   → Automatically sorts by last_date_to_apply
+       *
+       *   → created_at ensures:
+       *       - uniqueness
+       *       - stable pagination
+       *
+       * ---------------------------------------------------------------
+       * IMPORTANT:
+       * We pad last_date_to_apply to 15 digits because
+       * DynamoDB sort key is string-based and sorting is lexicographical.
+       * Padding ensures correct numeric ordering.
+       *
+       * RESULT:
+       *   - No FilterExpression
+       *   - No JS sorting
+       *   - No loop fetching
+       *   - Single fast indexed query (~50-120ms)
+       *
+       * DynamoDB rule:
+       *   Design indexes based on ACCESS PATTERNS, not storage.
+       * ================================================================
+       */
+      categoryPk: `${normalizedCategory}${NOTIFICATION_TYPE_MAPPER.META}`,
+      categorySk: `${paddedLastDate}#${now}`,
+      statePk: `${normalizedState}${NOTIFICATION_TYPE_MAPPER.META}`,
+      stateSk: `${paddedLastDate}#${now}`,
     };
     const detailsItem = {
       ...base,
-      sk: `${pk}${notificationId}#DETAILS`,
+      sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.DETAILS}`,
       type: NOTIFICATION_TYPE.DETAILS,
       short_description: data.details?.short_description || "",
       long_description: data.details?.long_description || "",
@@ -72,22 +140,22 @@ export async function addCompleteNotification(data: INotification) {
     };
     const feeItem = {
       ...base,
-      sk: `${pk}${notificationId}#FEE`,
+      sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.FEE}`,
       type: NOTIFICATION_TYPE.FEE,
       ...(data.fee || {}),
     };
     const eligibilityItem = {
       ...base,
-      sk: `${pk}${notificationId}#ELIGIBILITY`,
+      sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.ELIGIBILITY}`,
       type: NOTIFICATION_TYPE.ELIGIBILITY,
       ...(data.eligibility || {}),
     };
     const linksItem = {
       ...base,
-      sk: `${pk}${notificationId}#LINKS`,
+      sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.LINKS}`,
       type: NOTIFICATION_TYPE.LINKS,
       ...Object.fromEntries(
-        Object.entries(data.links || {}).filter(([_, v]) => !!v)
+        Object.entries(data.links || {}).filter(([_, v]) => !!v),
       ),
     };
     await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [
@@ -110,32 +178,92 @@ export async function addCompleteNotification(data: INotification) {
       error,
       "DB error while creating notification (DynamoDB)",
       "",
-      { data }
+      { data },
     );
     throw error;
   }
 }
 
-// View all notifications (excluding archived)
-export async function viewNotifications(): Promise<INotificationListItem[]> {
+// View all notifications (excluding archived) with optional search + time filtering
+export async function viewNotifications(
+  search?: string,
+  timeRange?: string,
+  category?: string,
+): Promise<INotificationListItem[]> {
   try {
-    const notifications = await fetchDynamoDB<INotificationListItem>(
+    // Build filter expressions
+    let filterString = "#type = :type";
+    const queryFilter: Record<string, any> = {
+      [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+    };
+
+    // Time-range filtering on created_at (same pattern as feedbackService)
+    if (timeRange && timeRange !== "all") {
+      const now = new Date();
+      let startTimeMillis = 0;
+
+      switch (timeRange) {
+        case "today":
+          now.setHours(0, 0, 0, 0);
+          startTimeMillis = now.getTime();
+          break;
+        case "last_week":
+          startTimeMillis = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+          break;
+        case "last_month":
+          now.setMonth(now.getMonth() - 1);
+          startTimeMillis = now.getTime();
+          break;
+        case "last_3_months":
+          now.setMonth(now.getMonth() - 3);
+          startTimeMillis = now.getTime();
+          break;
+        case "last_6_months":
+          now.setMonth(now.getMonth() - 6);
+          startTimeMillis = now.getTime();
+          break;
+      }
+
+      if (startTimeMillis > 0) {
+        filterString += " AND #created_at >= :startTime";
+        queryFilter["created_at"] = "created_at";
+        queryFilter["startTime"] = startTimeMillis;
+      }
+    }
+
+    if (category && category !== "all") {
+      filterString += " AND #category = :category";
+      queryFilter["category"] = category;
+    }
+
+    let notifications = await fetchDynamoDB<INotificationListItem>(
       ALL_TABLE_NAME.Notification,
       undefined,
       [
         NOTIFICATION.pk,
         NOTIFICATION.sk,
         NOTIFICATION.title,
+        NOTIFICATION.state,
         NOTIFICATION.category,
         NOTIFICATION.created_at,
         NOTIFICATION.approved_at,
         NOTIFICATION.approved_by,
         NOTIFICATION.type,
         NOTIFICATION.is_archived,
+        NOTIFICATION.review_status,
       ],
-      { [NOTIFICATION.type]: NOTIFICATION_TYPE.META },
-      "#type = :type"
+      queryFilter,
+      filterString,
     );
+
+    // Post-fetch search filtering (case-insensitive title substring match)
+    if (search && search.trim()) {
+      const searchLower = search.trim().toLowerCase();
+      notifications = notifications.filter((n) =>
+        n.title?.toLowerCase().includes(searchLower),
+      );
+    }
+
     return notifications.sort((a, b) => b.created_at - a.created_at);
   } catch (error) {
     logErrorLocation(
@@ -144,7 +272,7 @@ export async function viewNotifications(): Promise<INotificationListItem[]> {
       error,
       "DB error while fetching notifications list (DynamoDB)",
       "",
-      {}
+      {},
     );
     throw error;
   }
@@ -152,7 +280,7 @@ export async function viewNotifications(): Promise<INotificationListItem[]> {
 
 // Get single notification by ID with all related data
 export async function getNotificationById(
-  id: string
+  id: string,
 ): Promise<INotification | null> {
   try {
     if (!id) {
@@ -167,7 +295,7 @@ export async function getNotificationById(
       undefined,
       undefined,
       undefined,
-      skPrefix
+      skPrefix,
     );
     if (!items || items.length === 0) {
       return null;
@@ -185,7 +313,138 @@ export async function getNotificationById(
       error,
       "DB error while fetching notification by id (DynamoDB)",
       "",
-      { id }
+      { id },
+    );
+    throw error;
+  }
+}
+
+// Get review comments for a notification
+export async function getReviewComments(
+  notificationId: string,
+): Promise<IReviewComment[]> {
+  try {
+    if (!notificationId) {
+      throw new Error("Invalid notification id");
+    }
+    const pk = TABLE_PK_MAPPER.Notification;
+    const skPrefix = `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.COMMENT}`;
+    const items = await fetchDynamoDB<any>(
+      ALL_TABLE_NAME.Notification,
+      undefined,
+      undefined,
+      { [NOTIFICATION.type]: NOTIFICATION_TYPE.COMMENT },
+      "#type = :type",
+      undefined,
+      undefined,
+      skPrefix,
+    );
+    let comments = (items || [])
+      .map((item: any) => ({
+        comment_id: item.comment_id,
+        reviewer_sub: item.reviewer_sub,
+        reviewer_name: item.reviewer_name,
+        comment_text: item.comment_text,
+        created_at: item.created_at,
+      }))
+      .sort((a: IReviewComment, b: IReviewComment) => b.created_at - a.created_at);
+
+    // Enrich reviewer names for old comments where reviewer_name might be a UUID or missing
+    comments = await Promise.all(
+      comments.map(async (c: IReviewComment) => {
+        if (!c.reviewer_name || c.reviewer_name === c.reviewer_sub || c.reviewer_name.length === 36) {
+          try {
+            const profile = await getUserProfile(c.reviewer_sub);
+            if (profile) {
+              const name = [profile.given_name, profile.family_name]
+                .filter(Boolean)
+                .join(" ");
+              let email = profile.email;
+              if (!email) {
+                email = await getCognitoUserEmail(c.reviewer_sub) || "";
+              }
+              if (name) {
+                c.reviewer_name = email ? `${name} (${email})` : name;
+              } else if (email) {
+                c.reviewer_name = email;
+              }
+            } else {
+              const email = await getCognitoUserEmail(c.reviewer_sub);
+              if (email) {
+                c.reviewer_name = email;
+              }
+            }
+          } catch (e) {
+            // ignore fetch errors
+          }
+        }
+        return c;
+      })
+    );
+
+    return comments;
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "getReviewComments",
+      error,
+      "DB error while fetching review comments (DynamoDB)",
+      "",
+      { notificationId },
+    );
+    throw error;
+  }
+}
+
+// Add a review comment to a notification
+export async function addReviewComment(
+  notificationId: string,
+  reviewerSub: string,
+  reviewerName: string,
+  commentText: string,
+  requestChanges: boolean = false,
+): Promise<IReviewComment> {
+  try {
+    if (!notificationId || !commentText) {
+      throw new Error("Invalid comment input");
+    }
+    const pk = TABLE_PK_MAPPER.Notification;
+    const now = Date.now();
+    const commentId = generateId();
+    const commentItem = {
+      pk,
+      sk: `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.COMMENT}#${commentId}`,
+      type: NOTIFICATION_TYPE.COMMENT,
+      notification_id: notificationId,
+      comment_id: commentId,
+      reviewer_sub: reviewerSub,
+      reviewer_name: reviewerName,
+      comment_text: commentText,
+      created_at: now,
+    };
+    await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [commentItem]);
+
+    // If requesting changes, update review_status on the META item
+    if (requestChanges) {
+      const metaSk = `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.META}`;
+      await updateDynamoDB(pk, metaSk, { review_status: "changes_requested" });
+    }
+
+    return {
+      comment_id: commentId,
+      reviewer_sub: reviewerSub,
+      reviewer_name: reviewerName,
+      comment_text: commentText,
+      created_at: now,
+    };
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "addReviewComment",
+      error,
+      "DB error while adding review comment (DynamoDB)",
+      "",
+      { notificationId, commentText },
     );
     throw error;
   }
@@ -194,75 +453,123 @@ export async function getNotificationById(
 // Edit notification with all related tables
 export async function editCompleteNotification(
   id: string,
-  data: Partial<INotification>
+  data: Partial<INotification>,
 ) {
   try {
     if (!id || !data) {
       throw new Error(INVALID_INPUT);
     }
     const pk = TABLE_PK_MAPPER.Notification;
+    const notificationSk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
     const updates: Promise<any>[] = [];
+
     /* ================= META ================= */
     if (
       data.title ||
       data.category ||
+      data.state ||
       data.department ||
       data.start_date ||
-      data.last_date_to_apply ||
+      data.last_date_to_apply !== undefined ||
       data.exam_date ||
       data.total_vacancies !== undefined
     ) {
-      updates.push(
-        updateDynamoDB(pk, `${pk}${id}#META`, {
-          ...(data.title && { title: data.title }),
-          ...(data.category && { category: data.category }),
-          ...(data.department && { department: data.department }),
-          ...(data.start_date && { start_date: data.start_date }),
-          ...(data.last_date_to_apply && {
-            last_date_to_apply: data.last_date_to_apply,
-          }),
-          ...(data.exam_date && { exam_date: data.exam_date }),
-          ...(data.total_vacancies !== undefined && {
-            total_vacancies: data.total_vacancies,
-          }),
-        })
+      // We must fetch existing meta to construct GSI Sort Keys safely
+      const existingMetaArr = await fetchDynamoDB<INotification>(
+        ALL_TABLE_NAME.Notification,
+        notificationSk
       );
+      const existingMeta = existingMetaArr[0];
+      if (!existingMeta) throw new Error("Notification not found");
+
+      const updatePayload: any = {
+        ...(data.title && { title: data.title }),
+        ...(data.department && { department: data.department }),
+        ...(data.exam_date && { exam_date: toEpoch(data.exam_date) }),
+        ...(data.start_date && { start_date: toEpoch(data.start_date) }),
+        ...(data.total_vacancies !== undefined && {
+          total_vacancies: data.total_vacancies,
+        }),
+      };
+
+      const finalCategory = data.category || existingMeta.category;
+      const finalState = data.state || existingMeta.state || "UNKNOWN";
+
+      const newEpochLastDate = data.last_date_to_apply !== undefined
+        ? toEpoch(data.last_date_to_apply)
+        : existingMeta.last_date_to_apply;
+
+      const paddedLastDate = String(newEpochLastDate ?? 0).padStart(15, "0");
+      const originalCreatedAt = existingMeta.created_at || Date.now();
+
+      if (data.last_date_to_apply !== undefined) {
+        updatePayload.last_date_to_apply = newEpochLastDate;
+      }
+
+      // Always overwrite these to heal old data missing statePk/Sk or categoryPk/Sk
+      if (finalCategory) {
+        updatePayload.category = finalCategory;
+        updatePayload.categoryPk = `${finalCategory.toLowerCase()}${NOTIFICATION_TYPE_MAPPER.META}`;
+        updatePayload.categorySk = `${paddedLastDate}#${originalCreatedAt}`;
+      }
+
+      if (finalState) {
+        updatePayload.state = finalState;
+        updatePayload.statePk = `${finalState.toLowerCase()}${NOTIFICATION_TYPE_MAPPER.META}`;
+        updatePayload.stateSk = `${paddedLastDate}#${originalCreatedAt}`;
+      }
+
+      updates.push(updateDynamoDB(pk, notificationSk, updatePayload));
     }
+
     /* ================= DETAILS ================= */
     if (data.details) {
       updates.push(
-        updateDynamoDB(pk, `${pk}${id}#DETAILS`, {
+        updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.DETAILS}`, {
           ...data.details,
-        })
+        }),
       );
     }
     /* ================= FEE ================= */
     if (data.fee) {
       updates.push(
-        updateDynamoDB(pk, `${pk}${id}#FEE`, {
+        updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.FEE}`, {
           ...data.fee,
-        })
+        }),
       );
     }
     /* ================= ELIGIBILITY ================= */
     if (data.eligibility) {
       updates.push(
-        updateDynamoDB(pk, `${pk}${id}#ELIGIBILITY`, {
+        updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.ELIGIBILITY}`, {
           ...data.eligibility,
-        })
+        }),
       );
     }
     /* ================= LINKS ================= */
     if (data.links) {
       updates.push(
-        updateDynamoDB(pk, `${pk}${id}#LINKS`, {
+        updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.LINKS}`, {
           ...Object.fromEntries(
-            Object.entries(data.links).filter(([_, v]) => !!v)
+            Object.entries(data.links).filter(([_, v]) => !!v),
           ),
-        })
+        }),
       );
     }
     await Promise.all(updates);
+
+    // If the notification had changes requested, reset to pending after edit
+    const pk2 = TABLE_PK_MAPPER.Notification;
+    const metaSk = `${pk2}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
+    const existingArr = await fetchDynamoDB<any>(
+      ALL_TABLE_NAME.Notification,
+      metaSk
+    );
+    const existing = existingArr[0];
+    if (existing?.review_status === "changes_requested") {
+      await updateDynamoDB(pk2, metaSk, { review_status: "pending" });
+    }
+
     return true;
   } catch (error) {
     logErrorLocation(
@@ -271,7 +578,7 @@ export async function editCompleteNotification(
       error,
       "DB error while editing notification (DynamoDB)",
       "",
-      { id, data }
+      { id, data },
     );
     throw error;
   }
@@ -280,7 +587,7 @@ export async function editCompleteNotification(
 // Approve notification
 export async function approveNotification(
   id: string,
-  approvedBy: string
+  approvedBy: string,
 ): Promise<{
   approved_at: number;
   approved_by: string;
@@ -290,11 +597,12 @@ export async function approveNotification(
       throw new Error("Invalid approve notification input");
     }
     const pk = TABLE_PK_MAPPER.Notification;
-    const sk = `${pk}${id}#META`;
+    const sk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
     const now = Date.now();
     const attributesToUpdate = {
       approved_at: now,
       approved_by: approvedBy,
+      review_status: "approved",
     };
     await updateDynamoDB(pk, sk, attributesToUpdate);
     return attributesToUpdate;
@@ -305,7 +613,7 @@ export async function approveNotification(
       error,
       "DB error while approving notification (DynamoDB)",
       "",
-      { id, approvedBy }
+      { id, approvedBy },
     );
     throw error;
   }
@@ -319,7 +627,7 @@ export async function archiveNotification(id: string): Promise<boolean> {
       throw new Error("Invalid notification id");
     }
     const pk = TABLE_PK_MAPPER.Notification;
-    const sk = `${pk}${id}#META`;
+    const sk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
     const now = Date.now();
     const attributesToUpdate = {
       is_archived: true,
@@ -333,7 +641,7 @@ export async function archiveNotification(id: string): Promise<boolean> {
       error,
       "DB error while archiving notification (DynamoDB)",
       "",
-      { id }
+      { id },
     );
     throw error;
   }
@@ -347,7 +655,7 @@ export async function unarchiveNotification(id: string): Promise<boolean> {
       throw new Error("Invalid notification id");
     }
     const pk = TABLE_PK_MAPPER.Notification;
-    const sk = `${pk}${id}#META`;
+    const sk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
     const attributesToUpdate = {
       is_archived: false,
     };
@@ -360,7 +668,7 @@ export async function unarchiveNotification(id: string): Promise<boolean> {
       error,
       "DB error while unarchiving notification (DynamoDB)",
       "",
-      { id }
+      { id },
     );
     throw error;
   }

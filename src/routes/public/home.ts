@@ -2,6 +2,9 @@ import { Router } from "express";
 import {
   getHomePageNotifications,
   getNotificationsByCategory,
+  getNotificationsByState,
+  getLatestNotifications,
+  getAvailableFilters,
 } from "../../services/public/homeService";
 import { getNotificationById } from "../../services/private/notificationService";
 
@@ -10,6 +13,19 @@ const router = Router();
 /******************************************************************************
  *                            PUBLIC ROUTES
  ******************************************************************************/
+// Latest 10 notifications
+router.get("/latest", async (_req, res) => {
+  try {
+    const latest = await getLatestNotifications();
+    res.json({ success: true, data: latest });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Database error",
+    });
+  }
+});
+
 // Home page notifications
 router.get("/home", async (_req, res) => {
   try {
@@ -35,6 +51,32 @@ router.get("/category/:category", async (req, res) => {
       typeof lastEvaluatedKey === "string" ? lastEvaluatedKey : undefined,
       typeof searchValue === "string" ? searchValue : undefined
     );
+    if (!result) throw new Error("Database error");
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Database error",
+    });
+  }
+});
+
+// State + search + pagination
+router.get("/state/:state", async (req, res) => {
+  try {
+    const { state } = req.params;
+    const { searchValue, lastEvaluatedKey } = req.query;
+    const limit = Number(req.query.limit) || 20;
+    const result = await getNotificationsByState(
+      state,
+      limit,
+      typeof lastEvaluatedKey === "string" ? lastEvaluatedKey : undefined,
+      typeof searchValue === "string" ? searchValue : undefined
+    );
+    if (!result) throw new Error("Database error");
     res.json({
       success: true,
       ...result,
@@ -58,6 +100,22 @@ router.get("/getById/:id", async (req, res) => {
       });
     }
     res.json({ success: true, notification });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: "Database error",
+    });
+  }
+});
+
+// get available filters (e.g. active states)
+router.get("/filters", async (_req, res) => {
+  try {
+    const result = await getAvailableFilters();
+    res.json({
+      success: true,
+      ...result,
+    });
   } catch (err) {
     res.status(500).json({
       success: false,

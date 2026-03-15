@@ -1,6 +1,7 @@
 import {
   batchGetItemsFromDynamoDB,
   getItemFromDynamoDB,
+  queryItemsByIndexDynamoDB,
   queryItemsFromDynamoDB,
   queryItemsWithLimitDynamoDB,
 } from "../../dynamoDB_CRUD/fetchData";
@@ -10,9 +11,11 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { marshall } from "@aws-sdk/util-dynamodb";
 import {
+  FetchByIndexParams,
   IBatchGet,
   IFetchRelationalFields,
   IKeyValues,
+  QueryByIndexResponse,
 } from "../../db_schema/shared/SharedInterface";
 import {
   ALL_TABLE_NAMES,
@@ -41,7 +44,7 @@ export async function fetchDynamoDB<T>(
     relationalTable: null as string | null,
   },
   includeArchived: boolean = true,
-  skBeginsWith?: string
+  skBeginsWith?: string,
 ): Promise<T[]> {
   try {
     if (!TABLE_PK_MAPPER[tableName]) {
@@ -77,7 +80,7 @@ export async function fetchDynamoDB<T>(
               SPECIAL_CHARACTERS.HASH + item.split("/")[0]
             ] = item.split("/")[0];
             projectionExpression.push(
-              SPECIAL_CHARACTERS.HASH + item.split("/")[0]
+              SPECIAL_CHARACTERS.HASH + item.split("/")[0],
             );
           }
           if (item.split("/")[1] == "*") {
@@ -86,7 +89,7 @@ export async function fetchDynamoDB<T>(
               !relationalAttributesToGet.includes(item.split("/")[0])
             ) {
               relationalAttributesToGet.push(
-                ...RELATIONAL_TABLES_PROPERTIES[item.split("/")[0]]
+                ...RELATIONAL_TABLES_PROPERTIES[item.split("/")[0]],
               );
             }
           } else {
@@ -113,7 +116,7 @@ export async function fetchDynamoDB<T>(
           if (item.split("/")[1] == "*") {
             if (!relationalAttributesToGet.includes(item.split("/")[0])) {
               relationalAttributesToGet.push(
-                ...RELATIONAL_TABLES_PROPERTIES[item.split("/")[0]]
+                ...RELATIONAL_TABLES_PROPERTIES[item.split("/")[0]],
               );
             }
           } else {
@@ -136,11 +139,11 @@ export async function fetchDynamoDB<T>(
     relationalAttributesToGet = relationalAttributesToGet?.filter((ele) => ele);
     //remove duplicates
     relationalTables = relationalTables?.filter(
-      (item, index) => relationalTables?.indexOf(item) === index
+      (item, index) => relationalTables?.indexOf(item) === index,
     );
     //remove duplicates
     relationalAttributesToGet = relationalAttributesToGet?.filter(
-      (item, index) => relationalAttributesToGet?.indexOf(item) === index
+      (item, index) => relationalAttributesToGet?.indexOf(item) === index,
     );
     if (!relationalAttributesToGet?.includes(KEY_ATTRIBUTES.pk)) {
       relationalAttributesToGet.push(KEY_ATTRIBUTES.pk);
@@ -214,7 +217,7 @@ export async function fetchDynamoDB<T>(
           result[TOATAL_COUNT] = result[relationalTable]?.length;
           result[relationalTable] = result[relationalTable].slice(
             skipValue,
-            itemsPerPage + skipValue
+            itemsPerPage + skipValue,
           );
         } else if (typeof result[relationalTable] === "object") {
           result[TOATAL_COUNT] = 1;
@@ -224,7 +227,7 @@ export async function fetchDynamoDB<T>(
       const dataWithRelations = await getRelationalData<T>(
         [result as T],
         relationalTables,
-        relationalAttributesToGet
+        relationalAttributesToGet,
       );
       return dataWithRelations;
     } else {
@@ -238,7 +241,7 @@ export async function fetchDynamoDB<T>(
         EXPRESSION_ATTRIBUTES_NAMES.pk +
         SPECIAL_CHARACTERS.EQUALS_COLON +
         KEY_ATTRIBUTES.pk;
-      // ⭐ ADD begins_with(sk, skBeginsWith) SUPPORT
+      // ADD begins_with(sk, skBeginsWith) SUPPORT
       if (skBeginsWith) {
         expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.sk] =
           KEY_ATTRIBUTES.sk;
@@ -270,7 +273,7 @@ export async function fetchDynamoDB<T>(
       const dataWithRelations = await getRelationalData<T>(
         result,
         relationalTables,
-        relationalAttributesToGet
+        relationalAttributesToGet,
       );
       return dataWithRelations;
     }
@@ -287,7 +290,7 @@ export async function fetchDynamoDB<T>(
         attributesToGet,
         queryFilter,
         filterString,
-      }
+      },
     );
     handleErrorsAxios(error, {});
     return []; // TS safety
@@ -300,8 +303,9 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
   startKey?: Record<string, any>,
   attributesToGet?: string[],
   queryFilter?: IKeyValues,
-  filterString?: string
-): Promise<{ results: T[]; lastEvaluatedKey?: Record<string, any> }> {
+  filterString?: string,
+  scanIndexForward: boolean = true
+): Promise<{ results: T[]; lastEvaluatedKey?: { pk: string; sk: string } }> {
   try {
     const pkValue = TABLE_PK_MAPPER[tableName];
     if (!pkValue) {
@@ -339,7 +343,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
             const relationalTable =
               table as keyof typeof RELATIONAL_TABLES_PROPERTIES;
             relationalAttributesToGet.push(
-              ...RELATIONAL_TABLES_PROPERTIES[relationalTable]
+              ...RELATIONAL_TABLES_PROPERTIES[relationalTable],
             );
           } else if (attr) {
             relationalAttributesToGet.push(attr);
@@ -370,8 +374,12 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
       for (const [key, value] of Object.entries(queryFilter)) {
         const safeKey = key.includes(".") ? key.replace(".", "_") : key;
 
-        expressionAttributeNames[`#${safeKey}`] = key;
-        expressionAttributeValues[`:${safeKey}`] = value;
+        if (filterString.includes(`#${safeKey}`) || projectionExpression.includes(`#${safeKey}`)) {
+          expressionAttributeNames[`#${safeKey}`] = key;
+        }
+        if (filterString.includes(`:${safeKey}`)) {
+          expressionAttributeValues[`:${safeKey}`] = value;
+        }
       }
     }
     /* ------------------------------------
@@ -390,6 +398,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
         projectionExpression.length > 0
           ? projectionExpression.join(",")
           : undefined,
+      ScanIndexForward: scanIndexForward,
     };
     /* ------------------------------------
      * 5. Query with pagination
@@ -397,16 +406,16 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
     const result = await queryItemsWithLimitDynamoDB<T>(
       params,
       limit,
-      startKey
+      startKey,
     );
     const dataWithRelations = await getRelationalData<T>(
       result.results,
       relationalTables,
-      relationalAttributesToGet
+      relationalAttributesToGet,
     );
     return {
       results: dataWithRelations,
-      lastEvaluatedKey: result.lastEvaluatedKey,
+      lastEvaluatedKey: result.lastEvaluatedKey as { pk: string; sk: string },
     };
   } catch (error) {
     logErrorLocation(
@@ -422,7 +431,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
         attributesToGet,
         queryFilter,
         filterString,
-      }
+      },
     );
     handleErrorsAxios(error, {});
     return { results: [] }; // TS safety
@@ -432,7 +441,7 @@ export async function fetchDynamoDBWithLimit<T extends Record<string, any>>(
 export async function getRelationalData<T extends Record<string, any>>(
   result: T[],
   relationalTables: string[],
-  relationalAttributesToGet: string[]
+  relationalAttributesToGet: string[],
 ): Promise<T[]> {
   if (
     !relationalTables?.length ||
@@ -481,7 +490,7 @@ export async function getRelationalData<T extends Record<string, any>>(
   const expressionAttributeNames: Record<string, string> = {};
   const projectionExpression: string[] = [];
   relationalAttributesToGet = Array.from(
-    new Set(relationalAttributesToGet)
+    new Set(relationalAttributesToGet),
   ).filter(Boolean);
   if (!relationalAttributesToGet.includes(KEY_ATTRIBUTES.pk)) {
     expressionAttributeNames[EXPRESSION_ATTRIBUTES_NAMES.pk] =
@@ -535,6 +544,54 @@ export async function getRelationalData<T extends Record<string, any>>(
     }
     return item;
   });
+}
+
+export async function fetchByIndexDynamoDB<T>(
+  params: FetchByIndexParams,
+): Promise<QueryByIndexResponse<T>> {
+  try {
+    const {
+      indexName,
+      keyConditionExpression,
+      expressionAttributeValues,
+      attributesToGet,
+      limit,
+      exclusiveStartKey,
+      sortAscending,
+    } = params;
+    let projectionExpression: string | undefined;
+    let expressionAttributeNames: Record<string, string> | undefined;
+    if (attributesToGet?.length) {
+      expressionAttributeNames = {};
+      projectionExpression = attributesToGet
+        .map((attr, index) => {
+          const key = `#attr${index}`;
+          expressionAttributeNames![key] = attr;
+          return key;
+        })
+        .join(", ");
+    }
+    return await queryItemsByIndexDynamoDB<T>({
+      indexName,
+      keyConditionExpression,
+      expressionAttributeValues,
+      projectionExpression,
+      expressionAttributeNames,
+      limit,
+      exclusiveStartKey,
+      scanIndexForward: sortAscending,
+    });
+  } catch (error) {
+    logErrorLocation(
+      "fetchCalls.ts",
+      "fetchByIndexDynamoDB",
+      error,
+      "Error while fetching items by index",
+      "",
+      { params },
+    );
+    handleErrorsAxios(error, {});
+  }
 }
 
 const RELATIONAL_TABLES_PROPERTIES = {

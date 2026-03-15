@@ -69,11 +69,13 @@ export const REF_PROPERTIES = {
 export const ALL_TABLE_NAMES = {
   Notification: "Notification",
   Feedback: "Feedback",
+  User: "User",
 };
 
 export const TABLE_PK_MAPPER = {
   Notification: "Notification#",
   Feedback: "Feedback#",
+  User: "User#",
 };
 
 export const INSERT_ITEM_MAPPER = {

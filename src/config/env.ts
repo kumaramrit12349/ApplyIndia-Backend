@@ -19,6 +19,9 @@ export const COGNITO_CONFIG = {
   userPoolId: process.env.COGNITO_USER_POOL_ID!,
   clientId: process.env.COGNITO_CLIENT_ID!,
   region: process.env.AWS_REGION!,
+  domain: process.env.COGNITO_DOMAIN!,
+  googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL!,
+  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 };
 
 // Temporary (until full DynamoDB migration)
