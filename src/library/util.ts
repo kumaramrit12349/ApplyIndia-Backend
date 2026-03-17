@@ -28,6 +28,7 @@ export function buildNotificationDetail(items: any[]): any {
         modified_at: item.modified_at,
         approved_at: item.approved_at,
         approved_by: item.approved_by,
+        created_by: item.created_by,
       });
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.DETAILS}`)) {

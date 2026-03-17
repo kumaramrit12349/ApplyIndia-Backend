@@ -56,9 +56,11 @@ async function getDisplayName(req: any): Promise<string> {
  ******************************************************************************/
 
 // Add notification — Creator, Admin
-router.post("/add", requireRole("creator", "admin"), async (req, res) => {
+router.post("/add", requireRole("creator", "admin"), async (req: any, res) => {
   try {
-    const result = await addCompleteNotification(req.body);
+    const creatorName = await getDisplayName(req);
+    const notificationData = { ...req.body, created_by: creatorName };
+    const result = await addCompleteNotification(notificationData);
     res.json({ success: true, data: result });
   } catch (error) {
     console.error("Error adding notification:", error);
