@@ -68,7 +68,7 @@ router.post("/signin", async (req: Request, res: Response) => {
         data: {},
       });
     }
-    const isProd = process.env.NODE_ENV === "production";
+    const isProd = process.env.RUNTIME_ENV === "lambda";
     // Access token cookie (for API auth)
     res.cookie("accessToken", tokens.AccessToken, {
       httpOnly: true,
@@ -373,7 +373,7 @@ router.get("/google/callback", async (req: Request, res: Response) => {
     // Ensure user exists in DynamoDB; create if first time
     await getOrCreateGoogleUser(tokens.id_token);
 
-    const isProd = process.env.NODE_ENV === "production";
+    const isProd = process.env.RUNTIME_ENV === "lambda";
 
     // Set the same cookies as the email sign-in flow
     res.cookie("accessToken", tokens.access_token, {
