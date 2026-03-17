@@ -36,6 +36,7 @@ export interface INotification {
   approved_by?: string;
   approved_at?: number | null;
   is_archived?: boolean;
+  created_by?: string;
   created_at?: number;
   modified_at?: number;
   review_status?: 'pending' | 'changes_requested' | 'approved';

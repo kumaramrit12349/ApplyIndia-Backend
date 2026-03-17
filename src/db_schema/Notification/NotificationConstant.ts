@@ -28,6 +28,7 @@ export const NOTIFICATION = {
   approved_by: "approved_by",
   is_archived: "is_archived",
   review_status: "review_status",
+  created_by: "created_by",
 
   comment: {
     comment_id: "comment_id",
@@ -127,6 +128,7 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.approved_at,
   NOTIFICATION.approved_by,
   NOTIFICATION.review_status,
+  NOTIFICATION.created_by,
 ];
 
 export const HOME_PAGE_NOTIFICATION = [

@@ -125,11 +125,14 @@ export async function upsertUserActivity(
             );
         }
 
-        // Check attempt limit (only on first mark — when going from nothing or WISHLISTED to APPLIED)
+        // Check attempt limit
         let attemptCount = existing?.attempt_count || 0;
-        const isFirstApply = status === USER_ACTIVITY_STATUS.APPLIED && (!existing || existing.status === USER_ACTIVITY_STATUS.WISHLISTED);
+        
+        // Count as a new attempt if they are tracking it for the FIRST time 
+        // (meaning no existing record, or existing is exactly the same status but somehow deleted which shouldn't happen here)
+        const isNewAttempt = !existing;
 
-        if (isFirstApply) {
+        if (isNewAttempt) {
             const currentAttempts = await getAttemptCount(pk, notificationSk);
             if (currentAttempts >= MAX_ACTIVITY_ATTEMPTS) {
                 throw new Error(

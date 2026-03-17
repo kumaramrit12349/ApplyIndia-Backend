@@ -37,6 +37,7 @@ export async function addCompleteNotification(data: INotification) {
     const base = {
       pk,
       notification_id: notificationId,
+      created_by: data.created_by || "System",
       created_at: now,
       modified_at: now,
     };

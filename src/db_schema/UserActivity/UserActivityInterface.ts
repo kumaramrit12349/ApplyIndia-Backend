@@ -18,5 +18,5 @@ export interface IUserActivity {
 }
 
 /** Maximum number of times a user can track the same notification */
-export const MAX_ACTIVITY_ATTEMPTS = 2;
+export const MAX_ACTIVITY_ATTEMPTS = 3;
 
