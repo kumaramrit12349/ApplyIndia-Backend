@@ -25,9 +25,13 @@ provider:
   environment:
     APP_ENV: ${self:provider.stage}
     RUNTIME_ENV: lambda
+    AWS_REGION: ${self:provider.region}
     DYNAMODB_TABLE_NAME: ${env:DYNAMODB_TABLE_NAME}
     COGNITO_USER_POOL_ID: ${env:COGNITO_USER_POOL_ID}
     COGNITO_CLIENT_ID: ${env:COGNITO_CLIENT_ID}
+    COGNITO_DOMAIN: ${env:COGNITO_DOMAIN}
+    GOOGLE_CALLBACK_URL: ${env:GOOGLE_CALLBACK_URL}
+    FRONTEND_URL: ${env:FRONTEND_URL}
 
   ################################
   # ✅ IAM PERMISSIONS
@@ -42,6 +46,7 @@ provider:
             - dynamodb:Scan
             - dynamodb:PutItem
             - dynamodb:UpdateItem
+            - dynamodb:DeleteItem
           Resource:
             - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}
             - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}/index/*

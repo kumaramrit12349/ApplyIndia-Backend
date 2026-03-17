@@ -35,4 +35,7 @@ jobs:
           DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
           COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
           COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+          COGNITO_DOMAIN: ${{ secrets.COGNITO_DOMAIN }}
+          GOOGLE_CALLBACK_URL: ${{ secrets.GOOGLE_CALLBACK_URL }}
+          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
         run: npx serverless@3 deploy --stage dev
