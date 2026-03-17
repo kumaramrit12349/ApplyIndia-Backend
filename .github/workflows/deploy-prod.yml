@@ -1,9 +1,9 @@
-name: Deploy Backend (DEV)
+name: Deploy Backend (PROD)
 
 on:
   push:
     branches:
-      - devAWS
+      - main
 
 jobs:
   deploy:
@@ -32,10 +32,10 @@ jobs:
 
       - name: Deploy
         env:
-          DYNAMODB_TABLE_NAME: ${{ secrets.DYNAMODB_TABLE_NAME }}
-          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
-          COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
-          COGNITO_DOMAIN: ${{ secrets.COGNITO_DOMAIN }}
-          GOOGLE_CALLBACK_URL: ${{ secrets.GOOGLE_CALLBACK_URL }}
-          FRONTEND_URL: ${{ secrets.FRONTEND_URL }}
-        run: npx serverless@3 deploy --stage dev
+          DYNAMODB_TABLE_NAME: ${{ secrets.PROD_DYNAMODB_TABLE_NAME }}
+          COGNITO_USER_POOL_ID: ${{ secrets.PROD_COGNITO_USER_POOL_ID }}
+          COGNITO_CLIENT_ID: ${{ secrets.PROD_COGNITO_CLIENT_ID }}
+          COGNITO_DOMAIN: ${{ secrets.PROD_COGNITO_DOMAIN }}
+          GOOGLE_CALLBACK_URL: ${{ secrets.PROD_GOOGLE_CALLBACK_URL }}
+          FRONTEND_URL: ${{ secrets.PROD_FRONTEND_URL }}
+        run: npx serverless@3 deploy --stage prod

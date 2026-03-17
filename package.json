@@ -3,11 +3,14 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "dotenv -e src/env/dev.env -- nodemon src/server.ts",
+    "start": "dotenv -e src/env/local.env -- nodemon src/server.ts",
+    "start:dev": "dotenv -e src/env/dev.env -- nodemon src/server.ts",
+    "start:prod": "dotenv -e src/env/prod.env -- nodemon src/server.ts",
     "build": "tsc",
     "deploy:dev": "npm run build && npx serverless@3 deploy --stage dev",
+    "deploy:prod": "npm run build && npx serverless@3 deploy --stage prod",
     "remove:dev": "npx serverless@3 remove --stage dev",
-    "start:prod": "node dist/lambda.js"
+    "remove:prod": "npx serverless@3 remove --stage prod"
   },
   "dependencies": {
     "@aws-sdk/client-cognito-identity-provider": "^3.896.0",
