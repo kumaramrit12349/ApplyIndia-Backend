@@ -1,0 +1,41 @@
+name: Deploy Backend (PROD)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Verify build
+        run: |
+          ls dist
+          test -f dist/lambda.js
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Deploy
+        env:
+          DYNAMODB_TABLE_NAME: ${{ secrets.PROD_DYNAMODB_TABLE_NAME }}
+          COGNITO_USER_POOL_ID: ${{ secrets.PROD_COGNITO_USER_POOL_ID }}
+          COGNITO_CLIENT_ID: ${{ secrets.PROD_COGNITO_CLIENT_ID }}
+          COGNITO_DOMAIN: ${{ secrets.PROD_COGNITO_DOMAIN }}
+          GOOGLE_CALLBACK_URL: ${{ secrets.PROD_GOOGLE_CALLBACK_URL }}
+          FRONTEND_URL: ${{ secrets.PROD_FRONTEND_URL }}
+        run: npx serverless@3 deploy --stage prod
