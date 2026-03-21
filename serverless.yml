@@ -17,7 +17,7 @@ provider:
   stage: ${opt:stage, 'dev'}
 
   deploymentBucket:
-    name: applyindia-serverless-deployments-ap-south-1
+    name: applyindia-dev-serverless-deployments-ap-south-1 
 
   ################################
   # ✅ ENVIRONMENT VARIABLES
