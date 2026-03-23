@@ -3,7 +3,7 @@ name: Deploy Backend (PROD)
 on:
   push:
     branches:
-      - main
+      - prodAWS
 
 jobs:
   deploy:
