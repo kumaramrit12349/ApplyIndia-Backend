@@ -1,5 +1,16 @@
+import dotenv from "dotenv";
+import path from "path";
+
+// decide env (priority order)
+const APP_ENV = process.env.APP_ENV || "local";
+// resolve correct env file
+const envPath = path.resolve(__dirname, `../env/${APP_ENV}.env`);
+// load env file
+dotenv.config({ path: envPath });
+// ====== CONFIGS ======
+
 export const ENV = {
-  APP_ENV: process.env.APP_ENV || "dev",
+  APP_ENV,
   NODE_ENV: process.env.NODE_ENV || "development",
   PORT: Number(process.env.PORT) || 5000,
   RUNTIME_ENV: process.env.RUNTIME_ENV,
@@ -24,11 +35,7 @@ export const COGNITO_CONFIG = {
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 };
 
-// Temporary (until full DynamoDB migration)
-export const AURORA_CONFIG = {
-  HOST: process.env.AURORA_HOST,
-  USER: process.env.AURORA_USER,
-  PASSWORD: process.env.AURORA_PASSWORD,
-  DB: process.env.AURORA_DB,
-  PORT: Number(process.env.AURORA_PORT),
-};
+// ====== VALIDATION (VERY IMPORTANT) ======
+if (!process.env.COGNITO_USER_POOL_ID) {
+  throw new Error("COGNITO_USER_POOL_ID missing");
+}

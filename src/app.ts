@@ -17,7 +17,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 /* ===============================
-   CORS CONFIG (IMPORTANT)
+   CORS CONFIG (FIXED)
 ================================ */
 const allowedOrigins = [
   "http://localhost:5173",
@@ -28,10 +28,23 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // Postman / server-to-server
+      // allow non-browser requests (Postman, server-to-server)
+      if (!origin) return callback(null, true);
+
+      // allow localhost & 127.0.0.1 (any port)
+      if (
+        origin.startsWith("http://localhost") ||
+        origin.startsWith("http://127.0.0.1")
+      ) {
+        return callback(null, true);
+      }
+
+      // allow whitelisted domains
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
+
+      console.error("Blocked by CORS:", origin); // 🔥 debug
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
@@ -39,16 +52,6 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
-/* ===============================
-   PREFLIGHT HANDLER (FIX)
-================================ */
-app.use((req, res, next) => {
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
 
 /* ===============================
    ROUTES
