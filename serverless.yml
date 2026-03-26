@@ -2,6 +2,14 @@ service: applyindia-backend
 frameworkVersion: "3"
 useDotenv: true
 
+custom:
+  corsOrigins:
+    dev:
+      - http://localhost:5173
+      - https://dev.applyindia.online
+    prod:
+      - https://applyindia.online
+
 package:
   patterns:
     - dist/**
@@ -55,10 +63,7 @@ provider:
   ################################
   httpApi:
     cors:
-      allowedOrigins:
-        - http://localhost:5173  
-        - https://applyindia.online
-        - https://dev.applyindia.online
+      allowedOrigins: ${self:custom.corsOrigins.${self:provider.stage}}
       allowedHeaders:
         - Content-Type
         - Authorization
