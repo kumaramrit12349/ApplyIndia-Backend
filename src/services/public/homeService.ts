@@ -36,18 +36,16 @@ export async function getHomePageNotifications(): Promise<
         NOTIFICATION.has_answer_key,
         NOTIFICATION.has_result,
         NOTIFICATION.approved_at,
-        NOTIFICATION.approved_by,
         NOTIFICATION.type,
       ],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
-        [NOTIFICATION.approved_by]: "admin",
       },
-      "#type = :type AND #approved_by = :approved_by",
+      "#type = :type",
       undefined,
       false, // exclude archived
     );
-    // Extra safety: ensure approved_at exists and is number
+    // Only show approved notifications (approved_at must be a valid timestamp)
     const approved = items.filter((n) => typeof n.approved_at === "number");
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
@@ -419,19 +417,17 @@ export async function getLatestNotifications(): Promise<
         NOTIFICATION.has_answer_key,
         NOTIFICATION.has_result,
         NOTIFICATION.approved_at,
-        NOTIFICATION.approved_by,
         NOTIFICATION.type,
       ],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
-        [NOTIFICATION.approved_by]: "admin",
       },
-      "#type = :type AND #approved_by = :approved_by",
+      "#type = :type",
       undefined,
       false // exclude archived
     );
 
-    // Extra safety: ensure approved_at exists and is number
+    // Only show approved notifications (approved_at must be a valid timestamp)
     const approved = items.filter((n) => typeof n.approved_at === "number");
 
     // Sort latest first
