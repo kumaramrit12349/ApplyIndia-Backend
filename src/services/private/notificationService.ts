@@ -473,7 +473,11 @@ export async function editCompleteNotification(
       data.start_date ||
       data.last_date_to_apply !== undefined ||
       data.exam_date ||
-      data.total_vacancies !== undefined
+      data.total_vacancies !== undefined ||
+      data.has_admit_card !== undefined ||
+      data.has_answer_key !== undefined ||
+      data.has_result !== undefined ||
+      data.has_syllabus !== undefined
     ) {
       // We must fetch existing meta to construct GSI Sort Keys safely
       const existingMetaArr = await fetchDynamoDB<INotification>(
@@ -491,6 +495,10 @@ export async function editCompleteNotification(
         ...(data.total_vacancies !== undefined && {
           total_vacancies: data.total_vacancies,
         }),
+        ...(data.has_admit_card !== undefined && { has_admit_card: data.has_admit_card }),
+        ...(data.has_answer_key !== undefined && { has_answer_key: data.has_answer_key }),
+        ...(data.has_result !== undefined && { has_result: data.has_result }),
+        ...(data.has_syllabus !== undefined && { has_syllabus: data.has_syllabus }),
       };
 
       const finalCategory = data.category || existingMeta.category;
@@ -524,7 +532,7 @@ export async function editCompleteNotification(
     }
 
     /* ================= DETAILS ================= */
-    if (data.details) {
+    if (data.details && Object.keys(data.details).length > 0) {
       updates.push(
         updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.DETAILS}`, {
           ...data.details,
@@ -532,7 +540,7 @@ export async function editCompleteNotification(
       );
     }
     /* ================= FEE ================= */
-    if (data.fee) {
+    if (data.fee && Object.keys(data.fee).length > 0) {
       updates.push(
         updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.FEE}`, {
           ...data.fee,
@@ -540,7 +548,7 @@ export async function editCompleteNotification(
       );
     }
     /* ================= ELIGIBILITY ================= */
-    if (data.eligibility) {
+    if (data.eligibility && Object.keys(data.eligibility).length > 0) {
       updates.push(
         updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.ELIGIBILITY}`, {
           ...data.eligibility,
@@ -548,14 +556,15 @@ export async function editCompleteNotification(
       );
     }
     /* ================= LINKS ================= */
-    if (data.links) {
-      updates.push(
-        updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.LINKS}`, {
-          ...Object.fromEntries(
-            Object.entries(data.links).filter(([_, v]) => !!v),
-          ),
-        }),
+    if (data.links && Object.keys(data.links).length > 0) {
+      const validLinks = Object.fromEntries(
+        Object.entries(data.links).filter(([_, v]) => !!v)
       );
+      if (Object.keys(validLinks).length > 0) {
+        updates.push(
+          updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.LINKS}`, validLinks),
+        );
+      }
     }
     await Promise.all(updates);
 
