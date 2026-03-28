@@ -257,11 +257,12 @@ export async function viewNotifications(
       filterString,
     );
 
-    // Post-fetch search filtering (case-insensitive title substring match)
+    // Post-fetch search filtering (case-insensitive title or SK substring match)
     if (search && search.trim()) {
       const searchLower = search.trim().toLowerCase();
       notifications = notifications.filter((n) =>
-        n.title?.toLowerCase().includes(searchLower),
+        n.title?.toLowerCase().includes(searchLower) ||
+        n.sk?.toLowerCase().includes(searchLower)
       );
     }
 
