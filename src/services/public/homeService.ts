@@ -400,7 +400,7 @@ export async function getNotificationsByState(
 
 // Fetch the 10 latest notifications across all categories
 export async function getLatestNotifications(): Promise<
-  Array<{ title: string; sk: string }>
+  Array<{ title: string; sk: string; state?: string; last_date_to_apply?: string }>
 > {
   try {
     const items = await fetchDynamoDB<INotification>(
@@ -411,13 +411,9 @@ export async function getLatestNotifications(): Promise<
         NOTIFICATION.title,
         NOTIFICATION.created_at,
         NOTIFICATION.state,
-        NOTIFICATION.category,
-        NOTIFICATION.has_admit_card,
-        NOTIFICATION.has_syllabus,
-        NOTIFICATION.has_answer_key,
-        NOTIFICATION.has_result,
         NOTIFICATION.approved_at,
         NOTIFICATION.type,
+        NOTIFICATION.last_date_to_apply,
       ],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
@@ -442,6 +438,7 @@ export async function getLatestNotifications(): Promise<
         title: n.title || "",
         sk,
         state: n.state,
+        last_date_to_apply: n.last_date_to_apply,
       };
     });
 
