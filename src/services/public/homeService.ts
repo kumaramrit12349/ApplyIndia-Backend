@@ -5,7 +5,7 @@ import {
 } from "../../db_schema/Notification/NotificationConstant";
 import { INotification } from "../../db_schema/Notification/NotificationInterface";
 import {
-  ALL_TABLE_NAME,
+  ALL_TABLE_NAMES,
   NOTIFICATION_CATEGORIES,
   TABLE_PK_MAPPER,
 } from "../../db_schema/shared/SharedConstant";
@@ -23,7 +23,7 @@ export async function getHomePageNotifications(): Promise<
 > {
   try {
     const items = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       [
         NOTIFICATION.sk,
@@ -134,7 +134,7 @@ export async function getNotificationsByCategory(
 
       do {
         const result = await fetchDynamoDBWithLimit<INotification>(
-          ALL_TABLE_NAME.Notification,
+          ALL_TABLE_NAMES.Notification,
           limit,
           exclusiveStartKey,
           [
@@ -283,7 +283,7 @@ export async function getNotificationsByState(
 
       do {
         const result = await fetchDynamoDBWithLimit<INotification>(
-          ALL_TABLE_NAME.Notification,
+          ALL_TABLE_NAMES.Notification,
           limit,
           exclusiveStartKey,
           [
@@ -404,7 +404,7 @@ export async function getLatestNotifications(): Promise<
 > {
   try {
     const items = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       [
         NOTIFICATION.sk,
@@ -460,7 +460,7 @@ export async function getLatestNotifications(): Promise<
 export async function getAvailableFilters(): Promise<{ states: string[] }> {
   try {
     const items = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       [NOTIFICATION.state, NOTIFICATION.approved_at, NOTIFICATION.type],
       {

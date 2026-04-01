@@ -23,7 +23,9 @@ export async function insertItemIntoDynamoDB<T>(
     Item[INSERT_ITEM_MAPPER.created_at] = currentDate;
     Item[INSERT_ITEM_MAPPER.modified_at] = currentDate;
     Item[INSERT_ITEM_MAPPER.pk] = TABLE_PK_MAPPER[tableName];
-    Item[INSERT_ITEM_MAPPER.sk] = TABLE_PK_MAPPER[tableName] + generateId();
+    if (!Item[INSERT_ITEM_MAPPER.sk]) {
+      Item[INSERT_ITEM_MAPPER.sk] = TABLE_PK_MAPPER[tableName] + generateId();
+    }
     const insertItem = marshall(Item, { removeUndefinedValues: true });
     const params: PutItemCommandInput = {
       TableName: DYNAMODB_CONFIG.TABLE_NAME,

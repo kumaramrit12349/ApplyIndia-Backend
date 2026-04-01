@@ -29,6 +29,8 @@ export const NOTIFICATION = {
   is_archived: "is_archived",
   review_status: "review_status",
   created_by: "created_by",
+  source_url: "source_url",
+  scraped_from: "scraped_from",
 
   comment: {
     comment_id: "comment_id",

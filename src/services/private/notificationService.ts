@@ -11,9 +11,10 @@ import {
 } from "../../db_schema/Notification/NotificationInterface";
 import { INVALID_INPUT } from "../../db_schema/shared/ErrorMessage";
 import {
-  ALL_TABLE_NAME,
+  ALL_TABLE_NAMES,
   TABLE_PK_MAPPER,
 } from "../../db_schema/shared/SharedConstant";
+import { deleteDynamoDB } from "../../Interpreter/dynamoDB/deleteCalls";
 import { fetchDynamoDB } from "../../Interpreter/dynamoDB/fetchCalls";
 import { insertBulkDataDynamoDB } from "../../Interpreter/dynamoDB/transactCall";
 import { updateDynamoDB } from "../../Interpreter/dynamoDB/updateCalls";
@@ -130,6 +131,9 @@ export async function addCompleteNotification(data: INotification) {
       categorySk: `${paddedLastDate}#${now}`,
       statePk: `${normalizedState}${NOTIFICATION_TYPE_MAPPER.META}`,
       stateSk: `${paddedLastDate}#${now}`,
+      // Scraper provenance (undefined for manual entries)
+      ...(data.source_url && { source_url: data.source_url }),
+      ...(data.scraped_from && { scraped_from: data.scraped_from }),
     };
     const detailsItem = {
       ...base,
@@ -159,7 +163,7 @@ export async function addCompleteNotification(data: INotification) {
         Object.entries(data.links || {}).filter(([_, v]) => !!v),
       ),
     };
-    await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [
+    await insertBulkDataDynamoDB(ALL_TABLE_NAMES.Notification, [
       metaItem,
       detailsItem,
       feeItem,
@@ -190,6 +194,7 @@ export async function viewNotifications(
   search?: string,
   timeRange?: string,
   category?: string,
+  state?: string,
 ): Promise<INotificationListItem[]> {
   try {
     // Build filter expressions
@@ -236,9 +241,14 @@ export async function viewNotifications(
       filterString += " AND #category = :category";
       queryFilter["category"] = category;
     }
+ 
+    if (state && state !== "all") {
+      filterString += " AND #state = :state";
+      queryFilter["state"] = state;
+    }
 
     let notifications = await fetchDynamoDB<INotificationListItem>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       [
         NOTIFICATION.pk,
@@ -290,7 +300,7 @@ export async function getNotificationById(
     }
     const skPrefix = `${TABLE_PK_MAPPER.Notification}${id}`;
     const items = await fetchDynamoDB<any>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       DETAIL_VIEW_NOTIFICATION,
       undefined,
@@ -332,7 +342,7 @@ export async function getReviewComments(
     const pk = TABLE_PK_MAPPER.Notification;
     const skPrefix = `${pk}${notificationId}${NOTIFICATION_TYPE_MAPPER.COMMENT}`;
     const items = await fetchDynamoDB<any>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       undefined,
       { [NOTIFICATION.type]: NOTIFICATION_TYPE.COMMENT },
@@ -424,7 +434,7 @@ export async function addReviewComment(
       comment_text: commentText,
       created_at: now,
     };
-    await insertBulkDataDynamoDB(ALL_TABLE_NAME.Notification, [commentItem]);
+    await insertBulkDataDynamoDB(ALL_TABLE_NAMES.Notification, [commentItem]);
 
     // If requesting changes, update review_status on the META item
     if (requestChanges) {
@@ -482,7 +492,7 @@ export async function editCompleteNotification(
     ) {
       // We must fetch existing meta to construct GSI Sort Keys safely
       const existingMetaArr = await fetchDynamoDB<INotification>(
-        ALL_TABLE_NAME.Notification,
+        ALL_TABLE_NAMES.Notification,
         notificationSk
       );
       const existingMeta = existingMetaArr[0];
@@ -573,7 +583,7 @@ export async function editCompleteNotification(
     const pk2 = TABLE_PK_MAPPER.Notification;
     const metaSk = `${pk2}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
     const existingArr = await fetchDynamoDB<any>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       metaSk
     );
     const existing = existingArr[0];
@@ -683,4 +693,66 @@ export async function unarchiveNotification(id: string): Promise<boolean> {
     );
     throw error;
   }
+}
+// Permanent delete (hard delete) of all related entries
+export async function permanentDeleteNotification(id: string): Promise<boolean> {
+  try {
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+    const pk = TABLE_PK_MAPPER.Notification;
+    const skPrefix = `${pk}${id}`;
+
+    // 1. Fetch ALL records starting with Notification{id}
+    // This includes META, DETAILS, FEE, ELIGIBILITY, LINKS, and all COMMENTS
+    const items = await fetchDynamoDB<any>(
+      ALL_TABLE_NAMES.Notification,
+      undefined,
+      [NOTIFICATION.pk, NOTIFICATION.sk],
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      skPrefix,
+    );
+
+    if (!items || items.length === 0) {
+      console.warn(`[PermanentDelete] No records found for ID: ${id}`);
+      return true; // Consider it deleted if nothing found
+    }
+
+    console.log(`[PermanentDelete] Deleting ${items.length} records for Notification ${id}`);
+
+    // 2. Delete each item
+    const deletePromises = items.map((item: any) => 
+      deleteDynamoDB(item.pk, item.sk)
+    );
+    
+    await Promise.all(deletePromises);
+    return true;
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "permanentDeleteNotification",
+      error,
+      "DB error while permanently deleting notification (DynamoDB)",
+      "",
+      { id },
+    );
+    throw error;
+  }
+}
+
+/**
+ * Bulk permanent delete of multiple notifications.
+ * Each notification has multiple related entries (meta, detail, counts), 
+ * so we rely on the single permanentDeleteNotification logic for each.
+ */
+export async function bulkPermanentDeleteNotifications(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+  
+  // Running in sequence or semi-parallel to avoid DynamoDB throttling if IDs list is huge
+  // For small-to-medium batches, Promise.all is fine.
+  await Promise.all(ids.map(id => permanentDeleteNotification(id)));
+  return true;
 }

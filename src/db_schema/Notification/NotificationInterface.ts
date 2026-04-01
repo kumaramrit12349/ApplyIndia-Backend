@@ -41,6 +41,10 @@ export interface INotification {
   modified_at?: number;
   review_status?: 'pending' | 'changes_requested' | 'approved';
   review_comments?: IReviewComment[];
+
+  /* Scraper */
+  source_url?: string;   // canonical URL of the scraped listing page
+  scraped_from?: string; // human-readable site name, e.g. "Sarkari Result"
 }
 
 export interface INotificationDetails {

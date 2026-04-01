@@ -111,3 +111,18 @@ functions:
 
           # authorizer:
           #   name: cognitoJwtAuthorizer
+
+  # ─── Scraper Lambda ────────────────────────────────────────────────────────
+  # Triggered by EventBridge every 4 hours.
+  # Independently deployable from the Express API.
+  scraper:
+    handler: dist/scraper/scraperLambda.handler
+    timeout: 300      # 5 minutes — scraping multiple sites
+    memorySize: 512
+    description: "Scheduled scraper for government job, admission, and entrance exam notifications"
+    events:
+      - schedule:
+          rate: rate(4 hours)
+          enabled: false # Disabled: Using manual trigger from Admin Dashboard as per user request
+          name: applyindia-scraper-${self:provider.stage}
+          description: "Triggers the notification scraper every 4 hours (Currently Disabled)"
