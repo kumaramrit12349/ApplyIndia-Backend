@@ -1,9 +1,5 @@
 export const TOATAL_COUNT = "totalCount";
 
-export const ALL_TABLE_NAME = {
-  Notification: "Notification",
-};
-
 export const NOTIFICATION_CATEGORIES = {
   ALL: "all",
   JOB: "job",
@@ -70,12 +66,14 @@ export const ALL_TABLE_NAMES = {
   Notification: "Notification",
   Feedback: "Feedback",
   User: "User",
+  Site: "Site",
 };
 
 export const TABLE_PK_MAPPER = {
   Notification: "Notification#",
   Feedback: "Feedback#",
   User: "User#",
+  Site: "Site#",
 };
 
 export const INSERT_ITEM_MAPPER = {

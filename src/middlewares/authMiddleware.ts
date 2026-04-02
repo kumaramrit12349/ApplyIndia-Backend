@@ -25,10 +25,10 @@ export type AdminRole = "creator" | "reviewer" | "admin";
  * Add user subs here to grant admin dashboard access.
  */
 const ADMIN_ROLES: Record<string, AdminRole> = {
-  "f1f3dd7a-30c1-70f9-ddd2-471231074823": "admin",
+  "71e3ed0a-50e1-703a-f403-b96b7377db22": "admin",
   "41134dfa-8081-7054-8696-98f8c6c26461": "admin",
-  "c1931d1a-d061-70eb-f546-5f09ee9f0e59": "creator",
-  "0193cd7a-0061-700a-6670-f5ead95005d3": "reviewer",
+  "b1b3edba-5001-709c-b72b-aea0af85985c": "creator",
+  "61935d6a-d0c1-70b4-e501-7d72a9f6bd06": "reviewer",
 };
 
 /** Returns the admin role for a given sub, or null if not an admin user. */

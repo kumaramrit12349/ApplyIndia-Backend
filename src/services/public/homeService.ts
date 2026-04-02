@@ -5,7 +5,7 @@ import {
 } from "../../db_schema/Notification/NotificationConstant";
 import { INotification } from "../../db_schema/Notification/NotificationInterface";
 import {
-  ALL_TABLE_NAME,
+  ALL_TABLE_NAMES,
   NOTIFICATION_CATEGORIES,
   TABLE_PK_MAPPER,
 } from "../../db_schema/shared/SharedConstant";
@@ -23,7 +23,7 @@ export async function getHomePageNotifications(): Promise<
 > {
   try {
     const items = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       [
         NOTIFICATION.sk,
@@ -36,18 +36,16 @@ export async function getHomePageNotifications(): Promise<
         NOTIFICATION.has_answer_key,
         NOTIFICATION.has_result,
         NOTIFICATION.approved_at,
-        NOTIFICATION.approved_by,
         NOTIFICATION.type,
       ],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
-        [NOTIFICATION.approved_by]: "admin",
       },
-      "#type = :type AND #approved_by = :approved_by",
+      "#type = :type",
       undefined,
       false, // exclude archived
     );
-    // Extra safety: ensure approved_at exists and is number
+    // Only show approved notifications (approved_at must be a valid timestamp)
     const approved = items.filter((n) => typeof n.approved_at === "number");
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
@@ -136,7 +134,7 @@ export async function getNotificationsByCategory(
 
       do {
         const result = await fetchDynamoDBWithLimit<INotification>(
-          ALL_TABLE_NAME.Notification,
+          ALL_TABLE_NAMES.Notification,
           limit,
           exclusiveStartKey,
           [
@@ -285,7 +283,7 @@ export async function getNotificationsByState(
 
       do {
         const result = await fetchDynamoDBWithLimit<INotification>(
-          ALL_TABLE_NAME.Notification,
+          ALL_TABLE_NAMES.Notification,
           limit,
           exclusiveStartKey,
           [
@@ -402,36 +400,30 @@ export async function getNotificationsByState(
 
 // Fetch the 10 latest notifications across all categories
 export async function getLatestNotifications(): Promise<
-  Array<{ title: string; sk: string }>
+  Array<{ title: string; sk: string; state?: string; last_date_to_apply?: string }>
 > {
   try {
     const items = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       [
         NOTIFICATION.sk,
         NOTIFICATION.title,
         NOTIFICATION.created_at,
         NOTIFICATION.state,
-        NOTIFICATION.category,
-        NOTIFICATION.has_admit_card,
-        NOTIFICATION.has_syllabus,
-        NOTIFICATION.has_answer_key,
-        NOTIFICATION.has_result,
         NOTIFICATION.approved_at,
-        NOTIFICATION.approved_by,
         NOTIFICATION.type,
+        NOTIFICATION.last_date_to_apply,
       ],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
-        [NOTIFICATION.approved_by]: "admin",
       },
-      "#type = :type AND #approved_by = :approved_by",
+      "#type = :type",
       undefined,
       false // exclude archived
     );
 
-    // Extra safety: ensure approved_at exists and is number
+    // Only show approved notifications (approved_at must be a valid timestamp)
     const approved = items.filter((n) => typeof n.approved_at === "number");
 
     // Sort latest first
@@ -446,6 +438,7 @@ export async function getLatestNotifications(): Promise<
         title: n.title || "",
         sk,
         state: n.state,
+        last_date_to_apply: n.last_date_to_apply,
       };
     });
 
@@ -467,7 +460,7 @@ export async function getLatestNotifications(): Promise<
 export async function getAvailableFilters(): Promise<{ states: string[] }> {
   try {
     const items = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAME.Notification,
+      ALL_TABLE_NAMES.Notification,
       undefined,
       [NOTIFICATION.state, NOTIFICATION.approved_at, NOTIFICATION.type],
       {

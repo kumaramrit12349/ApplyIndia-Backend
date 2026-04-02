@@ -4,11 +4,13 @@ import {
   addReviewComment,
   approveNotification,
   archiveNotification,
+  permanentDeleteNotification,
   editCompleteNotification,
   getNotificationById,
   getReviewComments,
   unarchiveNotification,
   viewNotifications,
+  bulkPermanentDeleteNotifications,
 } from "../../services/private/notificationService";
 import {
   authenticateTokenAndEmail,
@@ -74,8 +76,8 @@ router.post("/add", requireRole("creator", "admin"), async (req: any, res) => {
 // View all notifications — All roles
 router.post("/view", async (req, res) => {
   try {
-    const { search, timeRange, category } = req.body || {};
-    const notifications = await viewNotifications(search, timeRange, category);
+    const { search, timeRange, category, state } = req.body || {};
+    const notifications = await viewNotifications(search, timeRange, category, state);
     res.json({ success: true, notifications });
   } catch (err) {
     res.status(500).json({
@@ -164,6 +166,23 @@ router.delete(
   }
 );
 
+// Permanent delete notification — Admin only
+router.delete(
+  "/delete-permanent/:id",
+  requireRole("admin"),
+  async (req, res) => {
+    try {
+      const result = await permanentDeleteNotification(req.params.id);
+      res.json({ success: true, message: "Notification permanently deleted", data: result });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: "Database error during permanent deletion",
+      });
+    }
+  }
+);
+
 // Unarchive notification — Admin only
 router.patch(
   "/unarchive/:id",
@@ -224,6 +243,22 @@ router.get("/comments/:id", async (req, res) => {
       success: false,
       error: "Failed to fetch comments",
     });
+  }
+});
+
+
+// Bulk permanent delete — Admin only
+router.delete("/bulk-permanent-delete", requireRole("admin"), async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, error: "IDs array is required" });
+    }
+    await bulkPermanentDeleteNotifications(ids);
+    res.json({ success: true, message: `${ids.length} notifications deleted permanently` });
+  } catch (error) {
+    console.error("Error bulk deleting notifications:", error);
+    res.status(500).json({ success: false, error: "Failed to bulk delete notifications" });
   }
 });
 
