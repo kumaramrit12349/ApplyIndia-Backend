@@ -93,7 +93,7 @@ export async function scrapeGeneric(config: ScraperSiteConfig): Promise<ScrapedR
         "Upgrade-Insecure-Requests": "1"
       },
       httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      timeout: 20000,
+      timeout: 10000,
       validateStatus: () => true 
     });
 
