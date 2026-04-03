@@ -233,7 +233,7 @@ export async function queryItemsByIndexDynamoDB<T>(
 ): Promise<QueryByIndexResponse<T>> {
   try {
     const queryParams: QueryCommandInput = {
-      TableName: "ApplyIndia-dev", // move to constant if needed
+      TableName: DYNAMODB_CONFIG.TABLE_NAME, 
       IndexName: params.indexName,
       KeyConditionExpression: params.keyConditionExpression,
       ExpressionAttributeValues: marshall(params.expressionAttributeValues),
