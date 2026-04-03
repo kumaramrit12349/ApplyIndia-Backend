@@ -362,7 +362,7 @@ router.get("/google/callback", async (req: Request, res: Response) => {
   if (error || !code) {
     console.error("Google OAuth callback error:", error);
     return res.redirect(
-      `${frontendUrl}/auth/callback?auth_error=${encodeURIComponent(error || "google_auth_failed")}`
+      `${frontendUrl}/login/callback?auth_error=${encodeURIComponent(error || "google_auth_failed")}`
     );
   }
 
@@ -404,14 +404,14 @@ router.get("/google/callback", async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`Redirecting to frontend: ${frontendUrl}/auth/callback`);
-    // Redirect to frontend — the /auth/callback page will pick up the session
-    return res.redirect(`${frontendUrl}/auth/callback`);
+    console.log(`Redirecting to frontend: ${frontendUrl}/login/callback`);
+    // Redirect to frontend — the /login/callback page will pick up the session
+    return res.redirect(`${frontendUrl}/login/callback`);
   } catch (err: any) {
     console.error("Google OAuth callback failed at exchange/lookup step:", err);
     const errorMessage = err.message || "google_auth_failed";
     return res.redirect(
-      `${frontendUrl}/auth/callback?auth_error=${encodeURIComponent(errorMessage)}`
+      `${frontendUrl}/login/callback?auth_error=${encodeURIComponent(errorMessage)}`
     );
   }
 });
