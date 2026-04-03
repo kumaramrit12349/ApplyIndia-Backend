@@ -62,113 +62,115 @@ export async function runScraper(dryRun = false): Promise<ScraperRunSummary> {
     console.log("[Scraper] No active sites configured in DynamoDB.");
   }
 
-  const CONCURRENCY_LIMIT = 5;
-  const results: ScraperRunSummary[] = [];
+  for (const { config, scraper } of activeSites) {
+    const siteSummary = {
+      siteKey: config.key,
+      found: 0,
+      inserted: 0,
+      skipped: 0,
+      virtual: 0,
+      failed: 0,
+      dateFiltered: 0,
+    };
 
-  // Process sites in batches of 5 to avoid resource exhaustion in Lambda
-  for (let i = 0; i < activeSites.length; i += CONCURRENCY_LIMIT) {
-    const batch = activeSites.slice(i, i + CONCURRENCY_LIMIT);
-    
-    await Promise.all(batch.map(async ({ config, scraper }) => {
-      const siteSummary = {
-        siteKey: config.key,
-        found: 0,
-        inserted: 0,
-        skipped: 0,
-        virtual: 0,
-        failed: 0,
-        dateFiltered: 0,
-      };
+    try {
+      console.log(`[Scraper] Starting ${config.name} (${config.listingUrl})`);
+      const rawItems = await scraper(config);
+      siteSummary.found = rawItems.length;
+      summary.totalFound += rawItems.length;
 
-      try {
-        console.log(`[Scraper] Starting ${config.name} (${config.listingUrl})`);
-        const rawItems = await scraper(config);
-        siteSummary.found = rawItems.length;
-        summary.totalFound += rawItems.length;
+      console.log(`[Scraper] ${config.name}: found ${rawItems.length} items`);
 
-        console.log(`[Scraper] ${config.name}: found ${rawItems.length} items`);
-
-        for (const raw of rawItems) {
-          try {
-            // Skip if we already have this URL or Title (Actual Duplicates)
-            const duplicate = await isDuplicate(raw.href, raw.rawTitle);
-            if (duplicate) {
-              siteSummary.skipped++;
-              summary.totalSkipped++;
-              continue;
-            }
-
-            // Skip if the scraped date is more than 2 days in the past
-            const parsedRawDate = parseIndianDate(raw.rawDateText);
-            if (isDateTooOld(parsedRawDate, 2)) {
-              siteSummary.dateFiltered++;
-              summary.totalDateFiltered++;
-              continue;
-            }
-
-            // Skip if obviously not a primary notification (FAQs, Manuals, etc.)
-            if (!isNotificationTitle(raw.rawTitle)) {
-              continue;
-            }
-
-            // Normalize raw item into a ScrapedNotification
-            const notification: ScrapedNotification = buildDefaultNotification(
-              raw.rawTitle,
-              raw.href,
-              config.name,
-              config.defaultCategory,
-              config.defaultState,
-              raw.rawDateText,
-            );
-
-            // Virtual Categories
-            const isVirtual = ["result", "admit-card", "answer-key", "syllabus", "documents"].includes(notification.category);
-
-            if (!isVirtual && !dryRun) {
-              await addCompleteNotification(notification as any);
-              addDuplicationRecord(raw.href, raw.rawTitle);
-              siteSummary.inserted++;
-              summary.totalInserted++;
-            } else {
-              // Collect for Preview
-              if (!summary.dryRunItems) summary.dryRunItems = [];
-              if (summary.dryRunItems.length < 100) {
-                summary.dryRunItems.push({
-                  title: notification.title,
-                  href: raw.href,
-                  siteName: config.name,
-                  category: notification.category,
-                  state: notification.state
-                });
-                addDuplicationRecord(raw.href, raw.rawTitle);
-              }
-              if (isVirtual) {
-                siteSummary.virtual++; 
-                summary.totalVirtual++;
-              }
-            }
-          } catch (itemError: any) {
-            siteSummary.failed++;
-            summary.totalFailed++;
-            const msg = `[${config.name}] Item error: ${itemError?.message || itemError}`;
-            errors.push(msg);
+      for (const raw of rawItems) {
+        try {
+          // Skip if we already have this URL or Title (Actual Duplicates)
+          const duplicate = await isDuplicate(raw.href, raw.rawTitle);
+          if (duplicate) {
+            siteSummary.skipped++;
+            summary.totalSkipped++;
+            continue;
           }
-        }
-      } catch (siteError: any) {
-        const msg = `[${config.name}] Site scrape failed: ${siteError?.message || siteError}`;
-        errors.push(msg);
-        console.error(msg);
-      }
 
-      summary.totalSitesProcessed++;
-      summary.perSite.push(siteSummary);
-      console.log(`[Scraper] ${config.name} done — found:${siteSummary.found}`);
-    }));
+          // Skip if the scraped date is more than 2 days in the past
+          const parsedRawDate = parseIndianDate(raw.rawDateText);
+          if (isDateTooOld(parsedRawDate, 2)) {
+            siteSummary.dateFiltered++;
+            summary.totalDateFiltered++;
+            console.log(`[Scraper] Date-filtered (too old: ${parsedRawDate}): ${raw.rawTitle}`);
+            continue;
+          }
+
+          // Skip if obviously not a primary notification (FAQs, Manuals, etc.)
+          if (!isNotificationTitle(raw.rawTitle)) {
+             // We just skip these quietly
+            continue;
+          }
+
+          // Normalize raw item into a ScrapedNotification
+          const notification: ScrapedNotification = buildDefaultNotification(
+            raw.rawTitle,
+            raw.href,
+            config.name,
+            config.defaultCategory,
+            config.defaultState,
+            raw.rawDateText,
+          );
+
+          // Virtual Categories: These items are ONLY for manual flag-marking preview.
+          // They should NEVER be inserted into the database as new notifications.
+          const isVirtual = ["result", "admit-card", "answer-key", "syllabus", "documents"].includes(notification.category);
+
+          if (!isVirtual && !dryRun) {
+            await addCompleteNotification(notification as any);
+            addDuplicationRecord(raw.href, raw.rawTitle); // Safely log to prevent intra-session duplicates
+            siteSummary.inserted++;
+            summary.totalInserted++;
+          } else {
+            // Collect for Preview (Used for manual review of results/admit cards/etc.)
+            if (!summary.dryRunItems) summary.dryRunItems = [];
+            if (summary.dryRunItems.length < 100) {
+              summary.dryRunItems.push({
+                title: notification.title,
+                href: raw.href,
+                siteName: config.name,
+                category: notification.category,
+                state: notification.state
+              });
+              addDuplicationRecord(raw.href, raw.rawTitle); // Track to prevent duplicates in current session preview
+            }
+            if (isVirtual) {
+               console.log(`[Virtual] Found update for ${notification.category}: ${notification.title}`);
+               siteSummary.virtual++; // Count virtual items separately
+               summary.totalVirtual++;
+            }
+          }
+        } catch (itemError: any) {
+          siteSummary.failed++;
+          summary.totalFailed++;
+          const msg = `[${config.name}] Failed to insert "${raw.rawTitle}": ${itemError?.message || itemError}`;
+          errors.push(msg);
+          console.error(msg);
+        }
+      }
+    } catch (siteError: any) {
+      const msg = `[${config.name}] Site scrape failed: ${siteError?.message || siteError}`;
+      errors.push(msg);
+      console.error(msg);
+    }
+
+    summary.totalSitesProcessed++;
+    summary.perSite.push(siteSummary);
+
+    console.log(
+      `[Scraper] ${config.name} done — found:${siteSummary.found} inserted:${siteSummary.inserted} skipped:${siteSummary.skipped} virtual:${siteSummary.virtual} dateFiltered:${siteSummary.dateFiltered} failed:${siteSummary.failed}`,
+    );
   }
 
   summary.completedAt = Date.now();
-  const elapsedSeconds = ((summary.completedAt - summary.startedAt) / 1000).toFixed(1);
-  console.log(`[Scraper] Run complete in ${elapsedSeconds}s`);
+  const elapsed = ((summary.completedAt - summary.startedAt) / 1000).toFixed(1);
+  console.log(
+    `[Scraper] Run complete in ${elapsed}s — total found:${summary.totalFound} inserted:${summary.totalInserted} skipped:${summary.totalSkipped} virtual:${summary.totalVirtual} dateFiltered:${summary.totalDateFiltered} failed:${summary.totalFailed}`,
+  );
 
   return summary;
 }
