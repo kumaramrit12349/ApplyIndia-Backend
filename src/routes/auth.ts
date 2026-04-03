@@ -368,7 +368,9 @@ router.get("/google/callback", async (req: Request, res: Response) => {
 
   try {
     // Exchange authorization code for tokens
+    console.log("Exchanging Google code...");
     const tokens = await exchangeGoogleCode(code);
+    console.log("Google tokens acquired successfully");
 
     // Ensure user exists in DynamoDB; create if first time
     await getOrCreateGoogleUser(tokens.id_token);
@@ -376,17 +378,19 @@ router.get("/google/callback", async (req: Request, res: Response) => {
     const isProd = process.env.RUNTIME_ENV === "lambda";
 
     // Set the same cookies as the email sign-in flow
+    // NOTE: On same-domain (dev.applyindia.online), 'lax' is generally more reliable.
+    // 'none' is only required for cross-site cookie transmission.
     res.cookie("accessToken", tokens.access_token, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: isProd ? "lax" : "lax", // Using lax for both for stability on same-domain
       maxAge: 60 * 60 * 1000,
       path: "/",
     });
     res.cookie("idToken", tokens.id_token, {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: isProd ? "lax" : "lax",
       maxAge: 60 * 60 * 1000,
       path: "/",
     });
@@ -394,16 +398,17 @@ router.get("/google/callback", async (req: Request, res: Response) => {
       res.cookie("refreshToken", tokens.refresh_token, {
         httpOnly: true,
         secure: isProd,
-        sameSite: isProd ? "none" : "lax",
+        sameSite: isProd ? "lax" : "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000,
         path: "/",
       });
     }
 
+    console.log(`Redirecting to frontend: ${frontendUrl}/auth/callback`);
     // Redirect to frontend — the /auth/callback page will pick up the session
     return res.redirect(`${frontendUrl}/auth/callback`);
   } catch (err: any) {
-    console.error("Google OAuth callback failed:", err);
+    console.error("Google OAuth callback failed at exchange/lookup step:", err);
     const errorMessage = err.message || "google_auth_failed";
     return res.redirect(
       `${frontendUrl}/auth/callback?auth_error=${encodeURIComponent(errorMessage)}`

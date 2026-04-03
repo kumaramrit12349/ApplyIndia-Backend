@@ -424,10 +424,12 @@ export async function exchangeGoogleCode(
           try {
             const parsed = JSON.parse(data);
             if (parsed.error) {
+              console.error("Cognito token exchange error response:", parsed);
               return reject(new Error(parsed.error_description || parsed.error));
             }
             resolve(parsed);
           } catch (e) {
+            console.error("Failed to parse Cognito token response. Raw data:", data);
             reject(new Error("Failed to parse token response"));
           }
         });
