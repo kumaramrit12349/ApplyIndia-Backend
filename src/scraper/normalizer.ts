@@ -210,7 +210,6 @@ export function buildDefaultNotification(
     details: {
       short_description: `<p>${title}</p>`,
       long_description: `<p>For complete details, visit the official notification page: <a href="${sourceUrl}" target="_blank">${sourceUrl}</a></p>`,
-      important_date_details: parsedDate ? `<p>Last Date: ${parsedDate}</p>` : "",
     },
     fee: {
       general_fee: 0,

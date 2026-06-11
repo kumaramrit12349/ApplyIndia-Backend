@@ -35,7 +35,6 @@ export function buildNotificationDetail(items: any[]): any {
       result.details = {
         short_description: item.short_description,
         long_description: item.long_description,
-        important_date_details: item.important_date_details,
       };
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.ELIGIBILITY}`)) {
@@ -45,7 +44,6 @@ export function buildNotificationDetail(items: any[]): any {
         qualification: item.qualification,
         specialization: item.specialization,
         min_percentage: item.min_percentage,
-        age_relaxation_details: item.age_relaxation_details,
       };
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.FEE}`)) {
@@ -55,7 +53,6 @@ export function buildNotificationDetail(items: any[]): any {
         sc_fee: item.sc_fee,
         st_fee: item.st_fee,
         ph_fee: item.ph_fee,
-        other_fee_details: item.other_fee_details,
       };
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.LINKS}`)) {
