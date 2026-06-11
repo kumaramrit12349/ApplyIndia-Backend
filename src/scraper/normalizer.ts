@@ -217,6 +217,8 @@ export function buildDefaultNotification(
       sc_fee: 0,
       st_fee: 0,
       ph_fee: 0,
+      ews_fee: 0,
+      female_fee: 0,
     },
     eligibility: {
       min_age: 0,

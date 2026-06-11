@@ -50,6 +50,8 @@ export const NOTIFICATION = {
     sc_fee: "sc_fee",
     st_fee: "st_fee",
     ph_fee: "ph_fee",
+    ews_fee: "ews_fee",
+    female_fee: "female_fee",
   },
 
   eligibility: {
@@ -101,6 +103,8 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.fee.sc_fee,
   NOTIFICATION.fee.st_fee,
   NOTIFICATION.fee.ph_fee,
+  NOTIFICATION.fee.ews_fee,
+  NOTIFICATION.fee.female_fee,
 
   NOTIFICATION.eligibility.min_age,
   NOTIFICATION.eligibility.max_age,

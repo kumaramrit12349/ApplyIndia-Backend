@@ -48,6 +48,8 @@ export interface ScrapedNotification {
     sc_fee: number;
     st_fee: number;
     ph_fee: number;
+    ews_fee: number;
+    female_fee: number;
   };
 
   eligibility: {

@@ -58,6 +58,8 @@ export interface INotificationFee {
   sc_fee: number;
   st_fee: number;
   ph_fee: number;
+  ews_fee: number;
+  female_fee: number;
 }
 
 export interface INotificationEligibility {

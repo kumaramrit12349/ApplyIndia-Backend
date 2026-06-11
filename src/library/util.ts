@@ -53,6 +53,8 @@ export function buildNotificationDetail(items: any[]): any {
         sc_fee: item.sc_fee,
         st_fee: item.st_fee,
         ph_fee: item.ph_fee,
+        ews_fee: item.ews_fee,
+        female_fee: item.female_fee,
       };
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.LINKS}`)) {
