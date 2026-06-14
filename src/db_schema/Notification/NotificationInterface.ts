@@ -50,7 +50,6 @@ export interface INotification {
 export interface INotificationDetails {
   short_description: string;
   long_description: string;
-  important_date_details?: string;
 }
 
 export interface INotificationFee {
@@ -59,7 +58,8 @@ export interface INotificationFee {
   sc_fee: number;
   st_fee: number;
   ph_fee: number;
-  other_fee_details?: string;
+  ews_fee: number;
+  female_fee: number;
 }
 
 export interface INotificationEligibility {
@@ -68,7 +68,6 @@ export interface INotificationEligibility {
   qualification: string;
   specialization: string;
   min_percentage: number;
-  age_relaxation_details?: string;
 }
 
 export interface INotificationLinks {

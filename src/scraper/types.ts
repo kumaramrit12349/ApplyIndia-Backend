@@ -40,7 +40,6 @@ export interface ScrapedNotification {
   details: {
     short_description: string;
     long_description: string;
-    important_date_details?: string;
   };
 
   fee: {
@@ -49,7 +48,8 @@ export interface ScrapedNotification {
     sc_fee: number;
     st_fee: number;
     ph_fee: number;
-    other_fee_details?: string;
+    ews_fee: number;
+    female_fee: number;
   };
 
   eligibility: {
@@ -58,7 +58,6 @@ export interface ScrapedNotification {
     qualification: string;
     specialization: string;
     min_percentage: number;
-    age_relaxation_details?: string;
   };
 
   links: {

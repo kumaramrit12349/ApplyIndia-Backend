@@ -42,7 +42,6 @@ export const NOTIFICATION = {
   details: {
     short_description: "short_description",
     long_description: "long_description",
-    important_date_details: "important_date_details",
   },
 
   fee: {
@@ -51,7 +50,8 @@ export const NOTIFICATION = {
     sc_fee: "sc_fee",
     st_fee: "st_fee",
     ph_fee: "ph_fee",
-    other_fee_details: "other_fee_details",
+    ews_fee: "ews_fee",
+    female_fee: "female_fee",
   },
 
   eligibility: {
@@ -60,7 +60,6 @@ export const NOTIFICATION = {
     qualification: "qualification",
     specialization: "specialization",
     min_percentage: "min_percentage",
-    age_relaxation_details: "age_relaxation_details",
     qualification_details: "qualification_details",
   },
 
@@ -98,18 +97,17 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.exam_date,
   NOTIFICATION.admit_card_date,
   NOTIFICATION.result_date,
-  NOTIFICATION.details.important_date_details,
 
   NOTIFICATION.fee.general_fee,
   NOTIFICATION.fee.obc_fee,
   NOTIFICATION.fee.sc_fee,
   NOTIFICATION.fee.st_fee,
   NOTIFICATION.fee.ph_fee,
-  NOTIFICATION.fee.other_fee_details,
+  NOTIFICATION.fee.ews_fee,
+  NOTIFICATION.fee.female_fee,
 
   NOTIFICATION.eligibility.min_age,
   NOTIFICATION.eligibility.max_age,
-  NOTIFICATION.eligibility.age_relaxation_details,
 
   NOTIFICATION.eligibility.qualification,
   NOTIFICATION.eligibility.specialization,

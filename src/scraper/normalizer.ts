@@ -210,7 +210,6 @@ export function buildDefaultNotification(
     details: {
       short_description: `<p>${title}</p>`,
       long_description: `<p>For complete details, visit the official notification page: <a href="${sourceUrl}" target="_blank">${sourceUrl}</a></p>`,
-      important_date_details: parsedDate ? `<p>Last Date: ${parsedDate}</p>` : "",
     },
     fee: {
       general_fee: 0,
@@ -218,6 +217,8 @@ export function buildDefaultNotification(
       sc_fee: 0,
       st_fee: 0,
       ph_fee: 0,
+      ews_fee: 0,
+      female_fee: 0,
     },
     eligibility: {
       min_age: 0,

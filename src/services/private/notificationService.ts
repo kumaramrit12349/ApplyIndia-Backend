@@ -141,7 +141,6 @@ export async function addCompleteNotification(data: INotification) {
       type: NOTIFICATION_TYPE.DETAILS,
       short_description: data.details?.short_description || "",
       long_description: data.details?.long_description || "",
-      important_date_details: data.details?.important_date_details || "",
     };
     const feeItem = {
       ...base,
