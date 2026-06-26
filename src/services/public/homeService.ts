@@ -121,17 +121,26 @@ export async function getNotificationsByCategory(
     let accumulated: INotification[] = [];
     let nextKey: any = undefined;
 
+    let exclusiveStartKey: Record<string, any> | undefined;
+    if (lastEvaluatedKeySk) {
+      try {
+        exclusiveStartKey = JSON.parse(
+          Buffer.from(lastEvaluatedKeySk, "base64").toString("utf-8")
+        );
+      } catch (err) {
+        if (normalizedCategory === "all") {
+          exclusiveStartKey = {
+            pk: TABLE_PK_MAPPER.Notification,
+            sk: lastEvaluatedKeySk,
+          };
+        }
+      }
+    }
+
     /* ============================================================
        CASE 1: CATEGORY = ALL (Main Table Query)
        ============================================================ */
     if (normalizedCategory === "all") {
-      let exclusiveStartKey = lastEvaluatedKeySk
-        ? {
-          pk: TABLE_PK_MAPPER.Notification,
-          sk: lastEvaluatedKeySk,
-        }
-        : undefined;
-
       do {
         const result = await fetchDynamoDBWithLimit<INotification>(
           ALL_TABLE_NAMES.Notification,
@@ -178,15 +187,15 @@ export async function getNotificationsByCategory(
               ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
               ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
         })),
-        lastEvaluatedKey: nextKey?.sk,
+        lastEvaluatedKey: nextKey
+          ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
+          : undefined,
       };
     }
 
     /* ============================================================
        CASE 2: CATEGORY SPECIFIC (GSI)
        ============================================================ */
-
-    let exclusiveStartKey: Record<string, any> | undefined;
 
     do {
       const result = await fetchByIndexDynamoDB<INotification>({
@@ -205,7 +214,7 @@ export async function getNotificationsByCategory(
         ],
         limit,
         exclusiveStartKey,
-        sortAscending: true,
+        sortAscending: false,
       });
 
       let items = result.results;
@@ -234,7 +243,9 @@ export async function getNotificationsByCategory(
             ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
             ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
       })),
-      lastEvaluatedKey: nextKey?.categorySk,
+      lastEvaluatedKey: nextKey
+        ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
+        : undefined,
     };
   } catch (error) {
     logErrorLocation(
@@ -270,17 +281,26 @@ export async function getNotificationsByState(
     let accumulated: INotification[] = [];
     let nextKey: any = undefined;
 
+    let exclusiveStartKey: Record<string, any> | undefined;
+    if (lastEvaluatedKeySk) {
+      try {
+        exclusiveStartKey = JSON.parse(
+          Buffer.from(lastEvaluatedKeySk, "base64").toString("utf-8")
+        );
+      } catch (err) {
+        if (normalizedState === "all") {
+          exclusiveStartKey = {
+            pk: TABLE_PK_MAPPER.Notification,
+            sk: lastEvaluatedKeySk,
+          };
+        }
+      }
+    }
+
     /* ============================================================
        CASE 1: STATE = ALL (Main Table Query)
        ============================================================ */
     if (normalizedState === "all") {
-      let exclusiveStartKey = lastEvaluatedKeySk
-        ? {
-          pk: TABLE_PK_MAPPER.Notification,
-          sk: lastEvaluatedKeySk,
-        }
-        : undefined;
-
       do {
         const result = await fetchDynamoDBWithLimit<INotification>(
           ALL_TABLE_NAMES.Notification,
@@ -328,15 +348,15 @@ export async function getNotificationsByState(
               ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
               ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
         })),
-        lastEvaluatedKey: nextKey?.sk,
+        lastEvaluatedKey: nextKey
+          ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
+          : undefined,
       };
     }
 
     /* ============================================================
        CASE 2: STATE SPECIFIC (GSI)
        ============================================================ */
-
-    let exclusiveStartKey: Record<string, any> | undefined;
 
     do {
       const result = await fetchByIndexDynamoDB<INotification>({
@@ -354,7 +374,7 @@ export async function getNotificationsByState(
         ],
         limit,
         exclusiveStartKey,
-        sortAscending: true,
+        sortAscending: false,
       });
 
       let items = result.results;
@@ -384,7 +404,9 @@ export async function getNotificationsByState(
             ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
             ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
       })),
-      lastEvaluatedKey: nextKey?.stateSk,
+      lastEvaluatedKey: nextKey
+        ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
+        : undefined,
     };
   } catch (error) {
     logErrorLocation(
