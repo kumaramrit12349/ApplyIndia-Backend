@@ -128,9 +128,9 @@ export async function addCompleteNotification(data: INotification) {
        * ================================================================
        */
       categoryPk: `${normalizedCategory}${NOTIFICATION_TYPE_MAPPER.META}`,
-      categorySk: `${paddedLastDate}#${now}`,
+      categorySk: `${now}#${paddedLastDate}`,
       statePk: `${normalizedState}${NOTIFICATION_TYPE_MAPPER.META}`,
-      stateSk: `${paddedLastDate}#${now}`,
+      stateSk: `${now}#${paddedLastDate}`,
       // Scraper provenance (undefined for manual entries)
       ...(data.source_url && { source_url: data.source_url }),
       ...(data.scraped_from && { scraped_from: data.scraped_from }),
@@ -529,13 +529,13 @@ export async function editCompleteNotification(
       if (finalCategory) {
         updatePayload.category = finalCategory;
         updatePayload.categoryPk = `${finalCategory.toLowerCase()}${NOTIFICATION_TYPE_MAPPER.META}`;
-        updatePayload.categorySk = `${paddedLastDate}#${originalCreatedAt}`;
+        updatePayload.categorySk = `${originalCreatedAt}#${paddedLastDate}`;
       }
 
       if (finalState) {
         updatePayload.state = finalState;
         updatePayload.statePk = `${finalState.toLowerCase()}${NOTIFICATION_TYPE_MAPPER.META}`;
-        updatePayload.stateSk = `${paddedLastDate}#${originalCreatedAt}`;
+        updatePayload.stateSk = `${originalCreatedAt}#${paddedLastDate}`;
       }
 
       updates.push(updateDynamoDB(pk, notificationSk, updatePayload));
