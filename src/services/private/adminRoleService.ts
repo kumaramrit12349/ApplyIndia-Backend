@@ -158,12 +158,11 @@ export async function lookupUserByEmail(
    existing hardcoded admin subs. Idempotent — skips if already set.
    ================================================================ */
 export async function seedDefaultAdminRoles(): Promise<void> {
-  const defaults: { sub: string; role: AdminRole }[] = [
-    { sub: "71e3ed0a-50e1-703a-f403-b96b7377db22", role: "admin" },
-    { sub: "41134dfa-8081-7054-8696-98f8c6c26461", role: "admin" },
-    { sub: "b1b3edba-5001-709c-b72b-aea0af85985c", role: "creator" },
-    { sub: "61935d6a-d0c1-70b4-e501-7d72a9f6bd06", role: "reviewer" },
-  ];
+  const defaults = Object.entries(SUPER_ADMIN_SUBS).map(([sub, role]) => ({
+    sub,
+    role,
+  }));
+
 
   for (const { sub, role } of defaults) {
     try {
