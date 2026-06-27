@@ -11,7 +11,7 @@ import {
   updateProfile,
   getUserProfile,
 } from "../services/authService";
-import { authenticateMe, getAdminRole } from "../middlewares/authMiddleware";
+import { authenticateMe, getAdminRole, getAdminPermissions } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 import { COGNITO_CONFIG } from "../config/env";
 
@@ -132,11 +132,13 @@ router.post("/signin", async (req: Request, res: Response) => {
 router.get("/me", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
   const adminRole = getAdminRole(user?.sub);
+  const adminPermissions = getAdminPermissions(user?.sub);
   return res.json({
     success: true,
     user: {
       isAdmin: !!adminRole,
       adminRole,
+      adminPermissions,
       email: user.email,
       given_name: user.given_name,
       family_name: user.family_name,
@@ -147,6 +149,7 @@ router.get("/me", authenticateMe, async (req: Request, res: Response) => {
 router.get("/profile", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
   const adminRole = getAdminRole(user?.sub);
+  const adminPermissions = getAdminPermissions(user?.sub);
   try {
     const fullProfile = await getUserProfile(user.sub);
     return res.json({
@@ -154,6 +157,7 @@ router.get("/profile", authenticateMe, async (req: Request, res: Response) => {
       user: {
         isAdmin: !!adminRole,
         adminRole,
+        adminPermissions,
         email: user.email,
         given_name: user.given_name,
         family_name: user.family_name,

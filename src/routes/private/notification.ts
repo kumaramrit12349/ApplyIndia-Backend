@@ -15,7 +15,11 @@ import {
 import {
   authenticateTokenAndEmail,
   requireRole,
+  checkNotificationPermission,
+  getDataWindowCutoff,
+  permissionsAllowNotification,
 } from "../../middlewares/authMiddleware";
+import { IAdminPermissions } from "../../db_schema/User/UserInterface";
 import { getUserProfile, getCognitoUserEmail } from "../../services/authService";
 
 const router = Router();
@@ -57,8 +61,8 @@ async function getDisplayName(req: any): Promise<string> {
  *        Role guards applied per-route via requireRole middleware
  ******************************************************************************/
 
-// Add notification — Creator, Admin
-router.post("/add", requireRole("creator", "admin"), async (req: any, res) => {
+// Add notification — Creator, Admin (scoped by permissions)
+router.post("/add", requireRole("creator", "admin"), checkNotificationPermission(), async (req: any, res) => {
   try {
     const creatorName = await getDisplayName(req);
     const notificationData = { ...req.body, created_by: creatorName };
@@ -73,11 +77,31 @@ router.post("/add", requireRole("creator", "admin"), async (req: any, res) => {
   }
 });
 
-// View all notifications — All roles
-router.post("/view", async (req, res) => {
+// View all notifications — All roles (filtered by permissions)
+router.post("/view", async (req: any, res) => {
   try {
     const { search, timeRange, category, state } = req.body || {};
-    const notifications = await viewNotifications(search, timeRange, category, state);
+    let notifications = await viewNotifications(search, timeRange, category, state);
+
+    // Apply permission-based filtering for non-admin roles
+    const role = req.adminRole;
+    const permissions: IAdminPermissions | null = req.adminPermissions;
+
+    if (role !== "admin" && permissions) {
+      // Filter by allowed categories and states
+      notifications = notifications.filter((n: any) =>
+        permissionsAllowNotification(permissions, n.category, n.state)
+      );
+
+      // Filter by data window (based on created_at)
+      const cutoff = getDataWindowCutoff(permissions.data_window);
+      if (cutoff !== null) {
+        notifications = notifications.filter(
+          (n: any) => n.created_at && n.created_at >= cutoff
+        );
+      }
+    }
+
     res.json({ success: true, notifications });
   } catch (err) {
     res.status(500).json({
@@ -108,10 +132,11 @@ router.get("/getById/:id", async (req, res) => {
   }
 });
 
-// Edit notification — Creator, Admin
+// Edit notification — Creator, Admin (scoped by permissions)
 router.put(
   "/edit/:id",
   requireRole("creator", "admin"),
+  checkNotificationPermission(),
   async (req, res) => {
     try {
       const notification = await editCompleteNotification(
@@ -128,10 +153,11 @@ router.put(
   }
 );
 
-// Approve notification — Reviewer, Admin
+// Approve notification — Reviewer, Admin (scoped by permissions)
 router.patch(
   "/approve/:id",
   requireRole("reviewer", "admin"),
+  checkNotificationPermission(),
   async (req: any, res) => {
     try {
       const approverName = await getDisplayName(req);
