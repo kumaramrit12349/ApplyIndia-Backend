@@ -19,7 +19,16 @@ import { logErrorLocation } from "../../utils/errorUtils";
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
 export async function getHomePageNotifications(): Promise<
-  Record<string, Array<{ title: string; sk: string }>>
+  Record<
+    string,
+    Array<{
+      title: string;
+      sk: string;
+      state?: string;
+      last_date_to_apply?: string;
+      created_at?: number;
+    }>
+  >
 > {
   try {
     const items = await fetchDynamoDB<INotification>(
@@ -37,6 +46,7 @@ export async function getHomePageNotifications(): Promise<
         NOTIFICATION.has_result,
         NOTIFICATION.approved_at,
         NOTIFICATION.type,
+        NOTIFICATION.last_date_to_apply,
       ],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
@@ -49,10 +59,25 @@ export async function getHomePageNotifications(): Promise<
     const approved = items.filter((n) => typeof n.approved_at === "number");
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
-    const grouped: Record<string, Array<{ title: string; sk: string }>> = {};
+    const grouped: Record<
+      string,
+      Array<{
+        title: string;
+        sk: string;
+        state?: string;
+        last_date_to_apply?: string;
+        created_at?: number;
+      }>
+    > = {};
     const pushWithLimit = (
       key: string,
-      item: { title: string; sk: string },
+      item: {
+        title: string;
+        sk: string;
+        state?: string;
+        last_date_to_apply?: string;
+        created_at?: number;
+      },
       limit = 10,
     ) => {
       if (!grouped[key]) grouped[key] = [];
@@ -68,6 +93,8 @@ export async function getHomePageNotifications(): Promise<
         title: n.title,
         sk,
         state: n.state,
+        last_date_to_apply: n.last_date_to_apply,
+        created_at: n.created_at,
       };
       // Primary category
       pushWithLimit(n.category || "Uncategorized", baseItem);
