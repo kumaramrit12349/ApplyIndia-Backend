@@ -15,6 +15,27 @@ import {
 import { IUserActivity, MAX_ACTIVITY_ATTEMPTS } from "../../db_schema/UserActivity/UserActivityInterface";
 import { TABLE_PK_MAPPER } from "../../db_schema/shared/SharedConstant";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { getNotificationById } from "./notificationService";
+
+/**
+ * Extracts the bare notification id from a full SK like "Notification#<id>#META".
+ */
+function extractNotificationId(notificationSk: string): string {
+    return notificationSk
+        .replace(TABLE_PK_MAPPER.Notification, "")
+        .replace(/#META$/, "");
+}
+
+/**
+ * True if a notification's application deadline has already passed.
+ * `last_date_to_apply` is stored as a "YYYY-MM-DD" string with no time component.
+ */
+function isDeadlinePassed(lastDateToApply: string | undefined): boolean {
+    if (!lastDateToApply) return false;
+    const deadline = new Date(lastDateToApply).getTime();
+    if (isNaN(deadline)) return false;
+    return Date.now() > deadline;
+}
 
 /**
  * Validates that the requested status transition follows the strict precedence:
@@ -110,8 +131,22 @@ export async function upsertUserActivity(
 
         // Check existing activity to enforce precedence
         const existing = await getUserActivityForNotification(userSub, notificationSk);
+        const currentStatus = existing ? existing.status : null;
 
-        if (!isValidStatusTransition(existing?.status || null, status)) {
+        // Block wishlisting/applying once the deadline has passed — but once a user has
+        // already applied, they can keep marking next steps regardless of the deadline.
+        const hasAlreadyApplied =
+            currentStatus !== null && currentStatus >= USER_ACTIVITY_STATUS.APPLIED;
+        if (!hasAlreadyApplied && status <= USER_ACTIVITY_STATUS.APPLIED) {
+            const notification = await getNotificationById(extractNotificationId(notificationSk));
+            if (notification && isDeadlinePassed(notification.last_date_to_apply)) {
+                throw new Error(
+                    "DEADLINE_PASSED: The last date to apply for this notification has passed. You can no longer wishlist or apply."
+                );
+            }
+        }
+
+        if (!isValidStatusTransition(currentStatus, status)) {
             const currentIndex = existing
                 ? ACTIVITY_STATUS_ORDER.indexOf(existing.status)
                 : -1;

@@ -49,6 +49,7 @@ router.post("/track", async (req, res) => {
         let statusCode = 500;
         if (msg.includes("Invalid status transition")) statusCode = 400;
         if (msg.includes("ATTEMPT_LIMIT_REACHED")) statusCode = 429;
+        if (msg.includes("DEADLINE_PASSED")) statusCode = 400;
 
         res.status(statusCode).json({
             success: false,
