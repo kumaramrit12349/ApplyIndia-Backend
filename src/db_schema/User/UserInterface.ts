@@ -31,7 +31,7 @@ export interface IUser {
     admin_permissions?: IAdminPermissions | null;
 }
 
-export type AdminRole = "creator" | "reviewer" | "admin";
+export type AdminRole = "creator" | "reviewer" | "senior_reviewer" | "admin";
 
 export type DataWindow =
     | "last_1_month"

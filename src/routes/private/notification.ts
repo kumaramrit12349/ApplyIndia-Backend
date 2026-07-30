@@ -16,6 +16,7 @@ import {
   authenticateTokenAndEmail,
   requireRole,
   checkNotificationPermission,
+  checkCanEditApproved,
   getDataWindowCutoff,
   permissionsAllowNotification,
 } from "../../middlewares/authMiddleware";
@@ -61,8 +62,8 @@ async function getDisplayName(req: any): Promise<string> {
  *        Role guards applied per-route via requireRole middleware
  ******************************************************************************/
 
-// Add notification — Creator, Admin (scoped by permissions)
-router.post("/add", requireRole("creator", "admin"), checkNotificationPermission(), async (req: any, res) => {
+// Add notification — Creator, Senior Reviewer, Admin (scoped by permissions)
+router.post("/add", requireRole("creator", "senior_reviewer", "admin"), checkNotificationPermission(), async (req: any, res) => {
   try {
     const creatorName = await getDisplayName(req);
     const notificationData = { ...req.body, created_by: creatorName };
@@ -132,11 +133,13 @@ router.get("/getById/:id", async (req, res) => {
   }
 });
 
-// Edit notification — Creator, Admin (scoped by permissions)
+// Edit notification — Creator, Senior Reviewer, Admin (scoped by permissions;
+// approved notifications can only be edited by Senior Reviewer/Admin)
 router.put(
   "/edit/:id",
-  requireRole("creator", "admin"),
+  requireRole("creator", "senior_reviewer", "admin"),
   checkNotificationPermission(),
+  checkCanEditApproved(),
   async (req, res) => {
     try {
       const notification = await editCompleteNotification(
@@ -153,10 +156,10 @@ router.put(
   }
 );
 
-// Approve notification — Reviewer, Admin (scoped by permissions)
+// Approve notification — Reviewer, Senior Reviewer, Admin (scoped by permissions)
 router.patch(
   "/approve/:id",
-  requireRole("reviewer", "admin"),
+  requireRole("reviewer", "senior_reviewer", "admin"),
   checkNotificationPermission(),
   async (req: any, res) => {
     try {
@@ -175,10 +178,10 @@ router.patch(
   }
 );
 
-// Archive notification — Admin only
+// Archive notification — Admin, Senior Reviewer only
 router.delete(
   "/delete/:id",
-  requireRole("admin"),
+  requireRole("senior_reviewer", "admin"),
   async (req, res) => {
     try {
       const notification = await archiveNotification(req.params.id);
@@ -209,10 +212,10 @@ router.delete(
   }
 );
 
-// Unarchive notification — Admin only
+// Unarchive notification — Admin, Senior Reviewer
 router.patch(
   "/unarchive/:id",
-  requireRole("admin"),
+  requireRole("senior_reviewer", "admin"),
   async (req, res) => {
     try {
       const notification = await unarchiveNotification(req.params.id);
@@ -226,11 +229,11 @@ router.patch(
   }
 );
 
-// Add review comment — Reviewer, Admin
+// Add review comment — Reviewer, Senior Reviewer, Admin
 // Every comment automatically marks the notification as "changes_requested"
 router.post(
   "/comment/:id",
-  requireRole("reviewer", "admin"),
+  requireRole("reviewer", "senior_reviewer", "admin"),
   async (req: any, res) => {
     try {
       const { comment_text } = req.body;

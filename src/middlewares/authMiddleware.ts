@@ -10,6 +10,7 @@ import {
   getSuperAdminFallback,
   seedDefaultAdminRoles,
 } from "../services/private/adminRoleService";
+import { getNotificationById } from "../services/private/notificationService";
 
 const client = jwksClient({
   jwksUri: `https://cognito-idp.${COGNITO_CONFIG.region}.amazonaws.com/${COGNITO_CONFIG.userPoolId}/.well-known/jwks.json`,
@@ -293,7 +294,7 @@ export const authenticateTokenAndEmail = async (
 
 /**
  * Role guard middleware factory.
- * Usage: router.post("/add", requireRole("creator", "admin"), handler)
+ * Usage: router.post("/add", requireRole("creator", "senior_reviewer", "admin"), handler)
  * Must be used AFTER authenticateTokenAndEmail.
  */
 export const requireRole = (...allowedRoles: AdminRole[]) => {
@@ -313,7 +314,7 @@ export const requireRole = (...allowedRoles: AdminRole[]) => {
  * Checks if the user's scoped permissions allow operating on a notification
  * with the given category and state (extracted from request body or params).
  *
- * Usage: router.post("/add", requireRole("creator", "admin"), checkNotificationPermission(), handler)
+ * Usage: router.post("/add", requireRole("creator", "senior_reviewer", "admin"), checkNotificationPermission(), handler)
  * Must be used AFTER authenticateTokenAndEmail.
  */
 export const checkNotificationPermission = () => {
@@ -334,5 +335,33 @@ export const checkNotificationPermission = () => {
     }
 
     next();
+  };
+};
+
+/**
+ * Permission guard for editing a notification that has already been approved.
+ * Admin and Senior Reviewer can always edit. Plain creator/reviewer are limited
+ * to pending/changes-requested notifications.
+ *
+ * Usage: router.put("/edit/:id", requireRole("creator", "senior_reviewer", "admin"), checkNotificationPermission(), checkCanEditApproved(), handler)
+ * Must be used AFTER authenticateTokenAndEmail, and expects an `:id` route param.
+ */
+export const checkCanEditApproved = () => {
+  return async (req: any, res: any, next: any) => {
+    const role: AdminRole | undefined = req.adminRole;
+    if (role === "admin" || role === "senior_reviewer") return next();
+
+    try {
+      const notification = await getNotificationById(req.params.id);
+      if (notification?.approved_at) {
+        return res.status(403).json({
+          error:
+            "This notification has already been approved. You don't have permission to edit approved notifications.",
+        });
+      }
+      next();
+    } catch (err) {
+      res.status(500).json({ error: "Failed to verify notification status" });
+    }
   };
 };
