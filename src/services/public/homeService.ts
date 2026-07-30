@@ -446,7 +446,13 @@ export async function getLatestNotifications(): Promise<
     );
 
     // Only show approved notifications (approved_at must be a valid timestamp)
-    const approved = items.filter((n) => typeof n.approved_at === "number");
+    // and exclude ones whose last date to apply has already passed.
+    const now = Date.now();
+    const approved = items.filter(
+      (n) =>
+        typeof n.approved_at === "number" &&
+        (typeof n.last_date_to_apply !== "number" || n.last_date_to_apply >= now)
+    );
 
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
