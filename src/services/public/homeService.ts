@@ -15,6 +15,7 @@ import {
   fetchDynamoDBWithLimit,
 } from "../../Interpreter/dynamoDB/fetchCalls";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { getNotificationById } from "../private/notificationService";
 
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
@@ -444,6 +445,85 @@ export async function getNotificationsByState(
       "",
       { state, limit, lastEvaluatedKeySk, searchValue },
     );
+  }
+}
+
+/**
+ * Fetches ALL active notifications (approved, not archived, deadline not
+ * passed) for a given category or state — no pagination, since this powers
+ * the "Eligible Notifications" filter which needs the full active set to
+ * compute eligibility against. Returns full notification objects (including
+ * the eligibility sub-object) since that's not available from the
+ * lightweight category/state GSI projection used elsewhere on this page.
+ */
+export async function getActiveNotificationsForFilter(
+  filterType: "category" | "state",
+  value: string,
+): Promise<INotification[]> {
+  try {
+    const normalizedValue = value?.toLowerCase();
+    if (!normalizedValue) return [];
+
+    const indexName = filterType === "category" ? "categoryGsi" : "stateGsi";
+    const keyConditionExpression =
+      filterType === "category" ? "categoryPk = :value" : "statePk = :value";
+
+    let accumulated: INotification[] = [];
+    let exclusiveStartKey: Record<string, any> | undefined;
+
+    do {
+      const result = await fetchByIndexDynamoDB<INotification>({
+        indexName,
+        keyConditionExpression,
+        expressionAttributeValues: {
+          ":value": `${normalizedValue}${NOTIFICATION_TYPE_MAPPER.META}`,
+        },
+        attributesToGet: [
+          NOTIFICATION.sk,
+          NOTIFICATION.approved_at,
+          NOTIFICATION.is_archived,
+          NOTIFICATION.last_date_to_apply,
+        ],
+        limit: 1000,
+        exclusiveStartKey,
+        sortAscending: false,
+      });
+
+      accumulated = accumulated.concat(result.results);
+      exclusiveStartKey = result.lastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    const now = Date.now();
+    const activeSks = accumulated
+      .filter(
+        (item) =>
+          !!item.approved_at &&
+          !item.is_archived &&
+          typeof item.last_date_to_apply === "number" &&
+          item.last_date_to_apply >= now,
+      )
+      .map((item) => item.sk!);
+
+    const fullNotifications = await Promise.all(
+      activeSks.map((sk) => {
+        const id = sk
+          .replace(TABLE_PK_MAPPER.Notification, "")
+          .replace(NOTIFICATION_TYPE_MAPPER.META, "");
+        return getNotificationById(id);
+      }),
+    );
+
+    return fullNotifications.filter((n): n is INotification => !!n);
+  } catch (error) {
+    logErrorLocation(
+      "homeService.ts",
+      "getActiveNotificationsForFilter",
+      error,
+      "DB error while fetching active notifications for eligibility filter",
+      "",
+      { filterType, value },
+    );
+    throw error;
   }
 }
 

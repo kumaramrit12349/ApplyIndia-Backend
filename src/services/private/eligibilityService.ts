@@ -178,3 +178,35 @@ export function checkEligibility(
 
   return { eligible: reasons.length === 0, reasons, missingProfileFields: [] };
 }
+
+/**
+ * Fixed set of profile fields required before the "Eligible Notifications"
+ * list filter can run at all (page-level gate, independent of any single
+ * notification's specific requirements — see checkEligibility's per-notification
+ * requiredProfileFields for that narrower use case).
+ */
+const CORE_ELIGIBILITY_FIELDS = ["dob", "state", "qualification", "qualification_percentage"] as const;
+
+export function getMissingCoreProfileFields(user: IUser): string[] {
+  return CORE_ELIGIBILITY_FIELDS.filter((field) => {
+    const value = (user as any)[field];
+    return value === undefined || value === null || value === "";
+  });
+}
+
+/**
+ * Filters a list of notifications down to the ones the user is eligible for.
+ * A notification is excluded (not surfaced as an error) if checkEligibility
+ * can't fully evaluate it (e.g. it needs a non-core field like specialization
+ * that the user hasn't filled in) — we only claim eligibility when we can
+ * actually confirm it.
+ */
+export function filterEligibleNotifications(
+  user: IUser,
+  notifications: INotification[]
+): INotification[] {
+  return notifications.filter((notification) => {
+    const result = checkEligibility(user, notification);
+    return result.eligible && result.missingProfileFields.length === 0;
+  });
+}
