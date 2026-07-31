@@ -18,6 +18,8 @@ export interface IUser {
     qualification: string; // 10th, 12th, Graduate, etc.
     specialization?: string;
     min_percentage?: number;
+    /** Percentage/CGPA-equivalent the user actually obtained in their highest qualification. Used for eligibility checks. */
+    qualification_percentage?: number;
 
     /* Flags/Meta */
     is_verified?: boolean;

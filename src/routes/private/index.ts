@@ -4,6 +4,7 @@ import userActivityRoutes from "./userActivity"
 import feedbackRoutes from "./feedback"
 import scraperAdminRoutes from "./scraperAdmin"
 import adminRoleRoutes from "./adminRole"
+import eligibilityRoutes from "./eligibility"
 
 const router = Router();
 
@@ -12,5 +13,6 @@ router.use("/user-activity", userActivityRoutes);
 router.use("/feedback", feedbackRoutes);
 router.use("/scraper", scraperAdminRoutes);
 router.use("/admin-roles", adminRoleRoutes);
+router.use("/eligibility", eligibilityRoutes);
 
 export default router;

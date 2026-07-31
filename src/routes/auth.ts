@@ -179,11 +179,13 @@ router.put("/profile", authenticateMe, async (req: Request, res: Response) => {
   const accessToken = req.cookies.accessToken;
   const data = req.body;
   try {
-    await updateProfile(accessToken, user.sub, data);
+    const { cognitoSyncFailed } = await updateProfile(accessToken, user.sub, data);
     return res.status(200).json({
       status: 200,
       success: true,
-      message: "Profile updated successfully",
+      message: cognitoSyncFailed
+        ? "Profile updated. Name/gender could not be synced to your login account — please try updating those again later."
+        : "Profile updated successfully",
       data: {},
     });
   } catch (error: any) {

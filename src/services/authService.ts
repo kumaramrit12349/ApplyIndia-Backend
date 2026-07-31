@@ -293,7 +293,11 @@ export async function resetPassword(
 }
 
 export async function updateProfile(accessToken: string, sub: string, data: Partial<IUser>) {
-  // 1. Update Cognito (only specific fields)
+  // 1. Update Cognito (only specific fields). Best-effort: a Cognito sync
+  // failure (e.g. access token missing the required OAuth scope) should
+  // never block saving the rest of the profile (state, qualification,
+  // percentage, etc.) to DynamoDB below.
+  let cognitoSyncFailed = false;
   const cognitoAttributes = [];
   if (data.given_name) cognitoAttributes.push({ Name: "given_name", Value: data.given_name });
   if (data.family_name) cognitoAttributes.push({ Name: "family_name", Value: data.family_name });
@@ -308,9 +312,7 @@ export async function updateProfile(accessToken: string, sub: string, data: Part
       await cognito.send(cmd);
     } catch (error: any) {
       logErrorLocation("authService.ts", "updateProfile (Cognito)", error, "AWS Cognito update error", "", { sub });
-      // We might want to continue even if Cognito update fails, or throw
-      // For now, if Cognito fails, we throw
-      throw error;
+      cognitoSyncFailed = true;
     }
   }
 
@@ -352,6 +354,8 @@ export async function updateProfile(accessToken: string, sub: string, data: Part
       throw error;
     }
   }
+
+  return { cognitoSyncFailed };
 }
 
 export async function getUserProfile(sub: string) {
