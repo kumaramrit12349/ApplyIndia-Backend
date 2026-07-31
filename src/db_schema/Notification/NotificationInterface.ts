@@ -45,6 +45,13 @@ export interface INotification {
   /* Scraper */
   source_url?: string;   // canonical URL of the scraped listing page
   scraped_from?: string; // human-readable site name, e.g. "Sarkari Result"
+
+  /* Aggregate user activity counts (maintained by userActivityService) */
+  count_wishlisted?: number;
+  count_applied?: number;
+  count_admit_card?: number;
+  count_result?: number;
+  count_selected?: number;
 }
 
 export interface INotificationDetails {

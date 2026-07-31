@@ -29,6 +29,11 @@ export function buildNotificationDetail(items: any[]): any {
         approved_at: item.approved_at,
         approved_by: item.approved_by,
         created_by: item.created_by,
+        count_wishlisted: item.count_wishlisted,
+        count_applied: item.count_applied,
+        count_admit_card: item.count_admit_card,
+        count_result: item.count_result,
+        count_selected: item.count_selected,
       });
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.DETAILS}`)) {
