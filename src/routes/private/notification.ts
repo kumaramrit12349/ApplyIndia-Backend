@@ -11,6 +11,7 @@ import {
   unarchiveNotification,
   viewNotifications,
   bulkPermanentDeleteNotifications,
+  bulkArchiveNotifications,
 } from "../../services/private/notificationService";
 import {
   authenticateTokenAndEmail,
@@ -288,6 +289,21 @@ router.delete("/bulk-permanent-delete", requireRole("admin"), async (req, res) =
   } catch (error) {
     console.error("Error bulk deleting notifications:", error);
     res.status(500).json({ success: false, error: "Failed to bulk delete notifications" });
+  }
+});
+
+// Bulk archive — Admin, Senior Reviewer
+router.delete("/bulk-archive", requireRole("senior_reviewer", "admin"), async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, error: "IDs array is required" });
+    }
+    await bulkArchiveNotifications(ids);
+    res.json({ success: true, message: `${ids.length} notifications archived` });
+  } catch (error) {
+    console.error("Error bulk archiving notifications:", error);
+    res.status(500).json({ success: false, error: "Failed to bulk archive notifications" });
   }
 });
 

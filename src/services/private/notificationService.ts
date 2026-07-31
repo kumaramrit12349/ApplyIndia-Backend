@@ -744,14 +744,24 @@ export async function permanentDeleteNotification(id: string): Promise<boolean> 
 
 /**
  * Bulk permanent delete of multiple notifications.
- * Each notification has multiple related entries (meta, detail, counts), 
+ * Each notification has multiple related entries (meta, detail, counts),
  * so we rely on the single permanentDeleteNotification logic for each.
  */
 export async function bulkPermanentDeleteNotifications(ids: string[]): Promise<boolean> {
   if (!ids || ids.length === 0) return true;
-  
+
   // Running in sequence or semi-parallel to avoid DynamoDB throttling if IDs list is huge
   // For small-to-medium batches, Promise.all is fine.
   await Promise.all(ids.map(id => permanentDeleteNotification(id)));
+  return true;
+}
+
+/**
+ * Bulk archive (soft delete) of multiple notifications.
+ */
+export async function bulkArchiveNotifications(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+
+  await Promise.all(ids.map(id => archiveNotification(id)));
   return true;
 }
