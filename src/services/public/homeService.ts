@@ -134,7 +134,7 @@ export async function getNotificationsByCategory(
   lastEvaluatedKeySk?: string,
   searchValue?: string,
 ): Promise<{
-  data: Array<{ title: string; sk: string }>;
+  data: Array<{ title: string; sk: string; last_date_to_apply?: string }>;
   lastEvaluatedKey?: string;
 }> {
   try {
@@ -180,6 +180,7 @@ export async function getNotificationsByCategory(
             NOTIFICATION.created_at,
             NOTIFICATION.category,
             NOTIFICATION.type,
+            NOTIFICATION.last_date_to_apply,
           ],
           { type: NOTIFICATION_TYPE.META },
           "#type = :type",
@@ -214,6 +215,7 @@ export async function getNotificationsByCategory(
             item.sk
               ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
               ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+          last_date_to_apply: item.last_date_to_apply,
         })),
         lastEvaluatedKey: nextKey
           ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
@@ -239,6 +241,7 @@ export async function getNotificationsByCategory(
           NOTIFICATION.created_at,
           NOTIFICATION.category,
           NOTIFICATION.approved_at,
+          NOTIFICATION.last_date_to_apply,
         ],
         limit,
         exclusiveStartKey,
@@ -270,6 +273,7 @@ export async function getNotificationsByCategory(
           item.sk
             ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
             ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+        last_date_to_apply: item.last_date_to_apply,
       })),
       lastEvaluatedKey: nextKey
         ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
@@ -294,7 +298,7 @@ export async function getNotificationsByState(
   lastEvaluatedKeySk?: string,
   searchValue?: string,
 ): Promise<{
-  data: Array<{ title: string; sk: string; state: string }>;
+  data: Array<{ title: string; sk: string; state: string; last_date_to_apply?: string }>;
   lastEvaluatedKey?: string;
 }> {
   try {
@@ -340,6 +344,7 @@ export async function getNotificationsByState(
             NOTIFICATION.created_at,
             NOTIFICATION.state,
             NOTIFICATION.type,
+            NOTIFICATION.last_date_to_apply,
           ],
           { type: NOTIFICATION_TYPE.META },
           "#type = :type",
@@ -375,6 +380,7 @@ export async function getNotificationsByState(
             item.sk
               ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
               ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+          last_date_to_apply: item.last_date_to_apply,
         })),
         lastEvaluatedKey: nextKey
           ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
@@ -399,6 +405,7 @@ export async function getNotificationsByState(
           NOTIFICATION.title,
           NOTIFICATION.created_at,
           NOTIFICATION.state,
+          NOTIFICATION.last_date_to_apply,
         ],
         limit,
         exclusiveStartKey,
@@ -431,6 +438,7 @@ export async function getNotificationsByState(
           item.sk
             ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
             ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+        last_date_to_apply: item.last_date_to_apply,
       })),
       lastEvaluatedKey: nextKey
         ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
