@@ -1,5 +1,6 @@
 import { IUser } from "../../db_schema/User/UserInterface";
 import { INotification } from "../../db_schema/Notification/NotificationInterface";
+import { INDIAN_STATES, resolveStateCode } from "../../utils/stateUtils";
 
 export interface IEligibilityResult {
   eligible: boolean;
@@ -24,21 +25,9 @@ const QUALIFICATION_LEVELS: { value: string; rank: number; keywords: string[] }[
   { value: "PhD", rank: 5, keywords: ["phd", "doctorate"] },
 ];
 
-const STATE_LABELS: Record<string, string> = {
-  CT: "Central", AN: "Andaman and Nicobar Islands", AP: "Andhra Pradesh", AR: "Arunachal Pradesh",
-  AS: "Assam", BR: "Bihar", CH: "Chandigarh", CG: "Chhattisgarh",
-  DN: "Dadra and Nagar Haveli and Daman and Diu", DL: "Delhi", GA: "Goa", GJ: "Gujarat",
-  HR: "Haryana", HP: "Himachal Pradesh", JK: "Jammu and Kashmir", JH: "Jharkhand",
-  KA: "Karnataka", KL: "Kerala", LA: "Ladakh", LD: "Lakshadweep", MP: "Madhya Pradesh",
-  MH: "Maharashtra", MN: "Manipur", ML: "Meghalaya", MZ: "Mizoram", NL: "Nagaland",
-  OR: "Odisha", PY: "Puducherry", PB: "Punjab", RJ: "Rajasthan", SK: "Sikkim",
-  TN: "Tamil Nadu", TG: "Telangana", TR: "Tripura", UP: "Uttar Pradesh", UK: "Uttarakhand",
-  WB: "West Bengal",
-};
-
 function stateLabel(code?: string): string {
-  if (!code) return code || "";
-  return STATE_LABELS[code.toUpperCase()] || code;
+  if (!code) return "";
+  return INDIAN_STATES.find((s) => s.value === code.toUpperCase())?.label || code;
 }
 
 /** Best-effort mapping of a free-text qualification string to a rank. Null if unrecognized. */
@@ -91,7 +80,7 @@ function requiredProfileFields(notification: INotification): string[] {
   if (elig?.min_percentage && elig.min_percentage > 0) {
     required.push("qualification_percentage");
   }
-  if (notification.state && notification.state.toUpperCase() !== "CT") {
+  if (notification.state && resolveStateCode(notification.state) !== "CT") {
     required.push("state");
   }
 
@@ -170,9 +159,10 @@ export function checkEligibility(
   }
 
   // --- Domicile ---
-  if (notification.state && notification.state.toUpperCase() !== "CT") {
-    if ((user.state || "").toUpperCase() !== notification.state.toUpperCase()) {
-      reasons.push(`${stateLabel(notification.state)} domicile required.`);
+  const notificationStateCode = resolveStateCode(notification.state);
+  if (notificationStateCode && notificationStateCode !== "CT") {
+    if (resolveStateCode(user.state) !== notificationStateCode) {
+      reasons.push(`${stateLabel(notificationStateCode)} domicile required.`);
     }
   }
 

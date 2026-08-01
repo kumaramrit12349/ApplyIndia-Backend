@@ -16,10 +16,18 @@ import {
 } from "../../Interpreter/dynamoDB/fetchCalls";
 import { logErrorLocation } from "../../utils/errorUtils";
 import { getNotificationById } from "../private/notificationService";
+import { resolveStateCode } from "../../utils/stateUtils";
 
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
-export async function getHomePageNotifications(): Promise<
+/**
+ * Fetches the homepage's category-grouped notifications, personalized by state.
+ *
+ * @param stateFilter - "all" shows every state (unfiltered); a state code
+ *   (e.g. "br") shows Central + that state; undefined/empty shows Central
+ *   only (the default for anonymous visitors and users with no state set).
+ */
+export async function getHomePageNotifications(stateFilter?: string): Promise<
   Record<
     string,
     Array<{
@@ -60,6 +68,22 @@ export async function getHomePageNotifications(): Promise<
     const approved = items.filter((n) => typeof n.approved_at === "number");
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
+
+    // Personalize by state: Central is always included; a specific state
+    // adds that state's notifications too; "all" disables filtering.
+    // Notification state values are inconsistent (admin-created uses the
+    // INDIAN_STATES code like "BR"; scraper-created uses a lowercase slug
+    // like "bihar" or "central" — see resolveStateCode), so both sides of
+    // the comparison are canonicalized to the same code first.
+    const isAllStates = stateFilter?.trim().toLowerCase() === "all";
+    const requestedCode = isAllStates ? undefined : resolveStateCode(stateFilter);
+    const scoped = isAllStates
+      ? approved
+      : approved.filter((n) => {
+          const code = resolveStateCode(n.state);
+          return code === "CT" || (!!requestedCode && code === requestedCode);
+        });
+
     const grouped: Record<
       string,
       Array<{
@@ -86,7 +110,7 @@ export async function getHomePageNotifications(): Promise<
         grouped[key].push(item);
       }
     };
-    for (const n of approved) {
+    for (const n of scoped) {
       const sk = n
         .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
         .replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "");

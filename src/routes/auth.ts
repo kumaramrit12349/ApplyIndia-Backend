@@ -133,6 +133,10 @@ router.get("/me", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
   const adminRole = getAdminRole(user?.sub);
   const adminPermissions = getAdminPermissions(user?.sub);
+  // Include the full DynamoDB profile (state, category, qualification, etc.)
+  // so pages relying on checkAuthStatus() — e.g. the home feed's state
+  // personalization — see it without needing the separate /auth/profile call.
+  const fullProfile = await getUserProfile(user.sub).catch(() => null);
   return res.json({
     success: true,
     user: {
@@ -142,6 +146,7 @@ router.get("/me", authenticateMe, async (req: Request, res: Response) => {
       email: user.email,
       given_name: user.given_name,
       family_name: user.family_name,
+      ...(fullProfile as object),
     },
   });
 });
