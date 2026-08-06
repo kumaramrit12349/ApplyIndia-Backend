@@ -10,6 +10,8 @@ import {
   signUpUser,
   updateProfile,
   getUserProfile,
+  getNotificationPreferences,
+  updateNotificationPreferences,
 } from "../services/authService";
 import { authenticateMe, getAdminRole, getAdminPermissions } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
@@ -198,6 +200,44 @@ router.put("/profile", authenticateMe, async (req: Request, res: Response) => {
       status: error.code || 400,
       success: false,
       message: error.message || "Failed to update profile",
+      data: {},
+    });
+  }
+});
+
+// Notification delivery preferences — kept separate from /profile so this
+// endpoint can only ever touch email/whatsapp/topic fields, not profile data.
+router.get("/notification-preferences", authenticateMe, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    const preferences = await getNotificationPreferences(user.sub);
+    return res.json({ success: true, preferences });
+  } catch (error: any) {
+    return res.status(error.code || 400).json({
+      status: error.code || 400,
+      success: false,
+      message: error.message || "Failed to fetch notification preferences",
+      data: {},
+    });
+  }
+});
+
+router.put("/notification-preferences", authenticateMe, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const data = req.body;
+  try {
+    await updateNotificationPreferences(user.sub, data);
+    return res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Notification preferences updated successfully",
+      data: {},
+    });
+  } catch (error: any) {
+    return res.status(error.code || 400).json({
+      status: error.code || 400,
+      success: false,
+      message: error.message || "Failed to update notification preferences",
       data: {},
     });
   }
