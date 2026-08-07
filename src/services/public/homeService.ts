@@ -15,11 +15,29 @@ import {
   fetchDynamoDBWithLimit,
 } from "../../Interpreter/dynamoDB/fetchCalls";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { getNotificationById } from "../private/notificationService";
+import { resolveStateCode } from "../../utils/stateUtils";
 
 // Fetch notifications for home page, filtered to approved (and non-archived when column exists),
 // then group them by category for sections like Jobs, Results
-export async function getHomePageNotifications(): Promise<
-  Record<string, Array<{ title: string; sk: string }>>
+/**
+ * Fetches the homepage's category-grouped notifications, personalized by state.
+ *
+ * @param stateFilter - "all" shows every state (unfiltered); a state code
+ *   (e.g. "br") shows Central + that state; undefined/empty shows Central
+ *   only (the default for anonymous visitors and users with no state set).
+ */
+export async function getHomePageNotifications(stateFilter?: string): Promise<
+  Record<
+    string,
+    Array<{
+      title: string;
+      sk: string;
+      state?: string;
+      last_date_to_apply?: string;
+      created_at?: number;
+    }>
+  >
 > {
   try {
     const items = await fetchDynamoDB<INotification>(
@@ -37,6 +55,7 @@ export async function getHomePageNotifications(): Promise<
         NOTIFICATION.has_result,
         NOTIFICATION.approved_at,
         NOTIFICATION.type,
+        NOTIFICATION.last_date_to_apply,
       ],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
@@ -49,10 +68,41 @@ export async function getHomePageNotifications(): Promise<
     const approved = items.filter((n) => typeof n.approved_at === "number");
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));
-    const grouped: Record<string, Array<{ title: string; sk: string }>> = {};
+
+    // Personalize by state: Central is always included; a specific state
+    // adds that state's notifications too; "all" disables filtering.
+    // Notification state values are inconsistent (admin-created uses the
+    // INDIAN_STATES code like "BR"; scraper-created uses a lowercase slug
+    // like "bihar" or "central" — see resolveStateCode), so both sides of
+    // the comparison are canonicalized to the same code first.
+    const isAllStates = stateFilter?.trim().toLowerCase() === "all";
+    const requestedCode = isAllStates ? undefined : resolveStateCode(stateFilter);
+    const scoped = isAllStates
+      ? approved
+      : approved.filter((n) => {
+          const code = resolveStateCode(n.state);
+          return code === "CT" || (!!requestedCode && code === requestedCode);
+        });
+
+    const grouped: Record<
+      string,
+      Array<{
+        title: string;
+        sk: string;
+        state?: string;
+        last_date_to_apply?: string;
+        created_at?: number;
+      }>
+    > = {};
     const pushWithLimit = (
       key: string,
-      item: { title: string; sk: string },
+      item: {
+        title: string;
+        sk: string;
+        state?: string;
+        last_date_to_apply?: string;
+        created_at?: number;
+      },
       limit = 10,
     ) => {
       if (!grouped[key]) grouped[key] = [];
@@ -60,7 +110,7 @@ export async function getHomePageNotifications(): Promise<
         grouped[key].push(item);
       }
     };
-    for (const n of approved) {
+    for (const n of scoped) {
       const sk = n
         .sk!.replace(`${TABLE_PK_MAPPER.Notification}`, "")
         .replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "");
@@ -68,6 +118,8 @@ export async function getHomePageNotifications(): Promise<
         title: n.title,
         sk,
         state: n.state,
+        last_date_to_apply: n.last_date_to_apply,
+        created_at: n.created_at,
       };
       // Primary category
       pushWithLimit(n.category || "Uncategorized", baseItem);
@@ -106,7 +158,7 @@ export async function getNotificationsByCategory(
   lastEvaluatedKeySk?: string,
   searchValue?: string,
 ): Promise<{
-  data: Array<{ title: string; sk: string }>;
+  data: Array<{ title: string; sk: string; last_date_to_apply?: string }>;
   lastEvaluatedKey?: string;
 }> {
   try {
@@ -152,6 +204,7 @@ export async function getNotificationsByCategory(
             NOTIFICATION.created_at,
             NOTIFICATION.category,
             NOTIFICATION.type,
+            NOTIFICATION.last_date_to_apply,
           ],
           { type: NOTIFICATION_TYPE.META },
           "#type = :type",
@@ -186,6 +239,7 @@ export async function getNotificationsByCategory(
             item.sk
               ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
               ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+          last_date_to_apply: item.last_date_to_apply,
         })),
         lastEvaluatedKey: nextKey
           ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
@@ -211,6 +265,7 @@ export async function getNotificationsByCategory(
           NOTIFICATION.created_at,
           NOTIFICATION.category,
           NOTIFICATION.approved_at,
+          NOTIFICATION.last_date_to_apply,
         ],
         limit,
         exclusiveStartKey,
@@ -242,6 +297,7 @@ export async function getNotificationsByCategory(
           item.sk
             ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
             ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+        last_date_to_apply: item.last_date_to_apply,
       })),
       lastEvaluatedKey: nextKey
         ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
@@ -266,7 +322,7 @@ export async function getNotificationsByState(
   lastEvaluatedKeySk?: string,
   searchValue?: string,
 ): Promise<{
-  data: Array<{ title: string; sk: string; state: string }>;
+  data: Array<{ title: string; sk: string; state: string; last_date_to_apply?: string }>;
   lastEvaluatedKey?: string;
 }> {
   try {
@@ -312,6 +368,7 @@ export async function getNotificationsByState(
             NOTIFICATION.created_at,
             NOTIFICATION.state,
             NOTIFICATION.type,
+            NOTIFICATION.last_date_to_apply,
           ],
           { type: NOTIFICATION_TYPE.META },
           "#type = :type",
@@ -347,6 +404,7 @@ export async function getNotificationsByState(
             item.sk
               ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
               ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+          last_date_to_apply: item.last_date_to_apply,
         })),
         lastEvaluatedKey: nextKey
           ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
@@ -371,6 +429,7 @@ export async function getNotificationsByState(
           NOTIFICATION.title,
           NOTIFICATION.created_at,
           NOTIFICATION.state,
+          NOTIFICATION.last_date_to_apply,
         ],
         limit,
         exclusiveStartKey,
@@ -403,6 +462,7 @@ export async function getNotificationsByState(
           item.sk
             ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
             ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+        last_date_to_apply: item.last_date_to_apply,
       })),
       lastEvaluatedKey: nextKey
         ? Buffer.from(JSON.stringify(nextKey)).toString("base64")
@@ -417,6 +477,85 @@ export async function getNotificationsByState(
       "",
       { state, limit, lastEvaluatedKeySk, searchValue },
     );
+  }
+}
+
+/**
+ * Fetches ALL active notifications (approved, not archived, deadline not
+ * passed) for a given category or state — no pagination, since this powers
+ * the "Eligible Notifications" filter which needs the full active set to
+ * compute eligibility against. Returns full notification objects (including
+ * the eligibility sub-object) since that's not available from the
+ * lightweight category/state GSI projection used elsewhere on this page.
+ */
+export async function getActiveNotificationsForFilter(
+  filterType: "category" | "state",
+  value: string,
+): Promise<INotification[]> {
+  try {
+    const normalizedValue = value?.toLowerCase();
+    if (!normalizedValue) return [];
+
+    const indexName = filterType === "category" ? "categoryGsi" : "stateGsi";
+    const keyConditionExpression =
+      filterType === "category" ? "categoryPk = :value" : "statePk = :value";
+
+    let accumulated: INotification[] = [];
+    let exclusiveStartKey: Record<string, any> | undefined;
+
+    do {
+      const result = await fetchByIndexDynamoDB<INotification>({
+        indexName,
+        keyConditionExpression,
+        expressionAttributeValues: {
+          ":value": `${normalizedValue}${NOTIFICATION_TYPE_MAPPER.META}`,
+        },
+        attributesToGet: [
+          NOTIFICATION.sk,
+          NOTIFICATION.approved_at,
+          NOTIFICATION.is_archived,
+          NOTIFICATION.last_date_to_apply,
+        ],
+        limit: 1000,
+        exclusiveStartKey,
+        sortAscending: false,
+      });
+
+      accumulated = accumulated.concat(result.results);
+      exclusiveStartKey = result.lastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    const now = Date.now();
+    const activeSks = accumulated
+      .filter(
+        (item) =>
+          !!item.approved_at &&
+          !item.is_archived &&
+          typeof item.last_date_to_apply === "number" &&
+          item.last_date_to_apply >= now,
+      )
+      .map((item) => item.sk!);
+
+    const fullNotifications = await Promise.all(
+      activeSks.map((sk) => {
+        const id = sk
+          .replace(TABLE_PK_MAPPER.Notification, "")
+          .replace(NOTIFICATION_TYPE_MAPPER.META, "");
+        return getNotificationById(id);
+      }),
+    );
+
+    return fullNotifications.filter((n): n is INotification => !!n);
+  } catch (error) {
+    logErrorLocation(
+      "homeService.ts",
+      "getActiveNotificationsForFilter",
+      error,
+      "DB error while fetching active notifications for eligibility filter",
+      "",
+      { filterType, value },
+    );
+    throw error;
   }
 }
 
@@ -446,7 +585,13 @@ export async function getLatestNotifications(): Promise<
     );
 
     // Only show approved notifications (approved_at must be a valid timestamp)
-    const approved = items.filter((n) => typeof n.approved_at === "number");
+    // and exclude ones whose last date to apply has already passed.
+    const now = Date.now();
+    const approved = items.filter(
+      (n) =>
+        typeof n.approved_at === "number" &&
+        (typeof n.last_date_to_apply !== "number" || n.last_date_to_apply >= now)
+    );
 
     // Sort latest first
     approved.sort((a, b) => (b.created_at ?? 0) - (a.created_at ?? 0));

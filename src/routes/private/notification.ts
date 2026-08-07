@@ -11,16 +11,22 @@ import {
   unarchiveNotification,
   viewNotifications,
   bulkPermanentDeleteNotifications,
+  bulkArchiveNotifications,
 } from "../../services/private/notificationService";
 import {
   authenticateTokenAndEmail,
   requireRole,
   checkNotificationPermission,
+  checkCanEditApproved,
   getDataWindowCutoff,
   permissionsAllowNotification,
 } from "../../middlewares/authMiddleware";
 import { IAdminPermissions } from "../../db_schema/User/UserInterface";
 import { getUserProfile, getCognitoUserEmail } from "../../services/authService";
+import { getDistributionLog, getNotificationId } from "../../services/private/notificationDistributionService";
+import { SendMessageCommand } from "@aws-sdk/client-sqs";
+import { sqsClient } from "../../aws/sqs.client";
+import { QUEUE_CONFIG } from "../../config/env";
 
 const router = Router();
 router.use(authenticateTokenAndEmail);
@@ -61,8 +67,8 @@ async function getDisplayName(req: any): Promise<string> {
  *        Role guards applied per-route via requireRole middleware
  ******************************************************************************/
 
-// Add notification — Creator, Admin (scoped by permissions)
-router.post("/add", requireRole("creator", "admin"), checkNotificationPermission(), async (req: any, res) => {
+// Add notification — Creator, Senior Reviewer, Admin (scoped by permissions)
+router.post("/add", requireRole("creator", "senior_reviewer", "admin"), checkNotificationPermission(), async (req: any, res) => {
   try {
     const creatorName = await getDisplayName(req);
     const notificationData = { ...req.body, created_by: creatorName };
@@ -132,11 +138,13 @@ router.get("/getById/:id", async (req, res) => {
   }
 });
 
-// Edit notification — Creator, Admin (scoped by permissions)
+// Edit notification — Creator, Senior Reviewer, Admin (scoped by permissions;
+// approved notifications can only be edited by Senior Reviewer/Admin)
 router.put(
   "/edit/:id",
-  requireRole("creator", "admin"),
+  requireRole("creator", "senior_reviewer", "admin"),
   checkNotificationPermission(),
+  checkCanEditApproved(),
   async (req, res) => {
     try {
       const notification = await editCompleteNotification(
@@ -153,10 +161,10 @@ router.put(
   }
 );
 
-// Approve notification — Reviewer, Admin (scoped by permissions)
+// Approve notification — Reviewer, Senior Reviewer, Admin (scoped by permissions)
 router.patch(
   "/approve/:id",
-  requireRole("reviewer", "admin"),
+  requireRole("reviewer", "senior_reviewer", "admin"),
   checkNotificationPermission(),
   async (req: any, res) => {
     try {
@@ -175,10 +183,10 @@ router.patch(
   }
 );
 
-// Archive notification — Admin only
+// Archive notification — Admin, Senior Reviewer only
 router.delete(
   "/delete/:id",
-  requireRole("admin"),
+  requireRole("senior_reviewer", "admin"),
   async (req, res) => {
     try {
       const notification = await archiveNotification(req.params.id);
@@ -209,10 +217,10 @@ router.delete(
   }
 );
 
-// Unarchive notification — Admin only
+// Unarchive notification — Admin, Senior Reviewer
 router.patch(
   "/unarchive/:id",
-  requireRole("admin"),
+  requireRole("senior_reviewer", "admin"),
   async (req, res) => {
     try {
       const notification = await unarchiveNotification(req.params.id);
@@ -226,11 +234,11 @@ router.patch(
   }
 );
 
-// Add review comment — Reviewer, Admin
+// Add review comment — Reviewer, Senior Reviewer, Admin
 // Every comment automatically marks the notification as "changes_requested"
 router.post(
   "/comment/:id",
-  requireRole("reviewer", "admin"),
+  requireRole("reviewer", "senior_reviewer", "admin"),
   async (req: any, res) => {
     try {
       const { comment_text } = req.body;
@@ -287,5 +295,67 @@ router.delete("/bulk-permanent-delete", requireRole("admin"), async (req, res) =
     res.status(500).json({ success: false, error: "Failed to bulk delete notifications" });
   }
 });
+
+// Bulk archive — Admin, Senior Reviewer
+router.delete("/bulk-archive", requireRole("senior_reviewer", "admin"), async (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, error: "IDs array is required" });
+    }
+    await bulkArchiveNotifications(ids);
+    res.json({ success: true, message: `${ids.length} notifications archived` });
+  } catch (error) {
+    console.error("Error bulk archiving notifications:", error);
+    res.status(500).json({ success: false, error: "Failed to bulk archive notifications" });
+  }
+});
+
+// Get delivery/publishing status for a notification — Reviewer, Senior Reviewer, Admin
+router.get(
+  "/:id/distribution-status",
+  requireRole("reviewer", "senior_reviewer", "admin"),
+  async (req, res) => {
+    try {
+      const notification = await getNotificationById(req.params.id);
+      if (!notification || !notification.sk) {
+        return res.status(404).json({ success: false, error: "Notification not found" });
+      }
+      const log = await getDistributionLog(notification.sk);
+      res.json({ success: true, distribution: log });
+    } catch (err) {
+      res.status(500).json({ success: false, error: "Failed to fetch distribution status" });
+    }
+  }
+);
+
+// Retry failed distribution for a notification — Senior Reviewer, Admin
+router.post(
+  "/:id/retry-distribution",
+  requireRole("senior_reviewer", "admin"),
+  async (req, res) => {
+    try {
+      const notification = await getNotificationById(req.params.id);
+      if (!notification || !notification.sk) {
+        return res.status(404).json({ success: false, error: "Notification not found" });
+      }
+      // Re-runs the queue-based fan-out (same as approval) instead of a
+      // synchronous loop, since retrying could involve re-enumerating a
+      // very large eligible-user list.
+      if (QUEUE_CONFIG.notificationFanoutQueueUrl) {
+        await sqsClient.send(
+          new SendMessageCommand({
+            QueueUrl: QUEUE_CONFIG.notificationFanoutQueueUrl,
+            MessageBody: JSON.stringify({ notificationId: getNotificationId(notification.sk), mode: "retry" }),
+          })
+        );
+      }
+      const log = await getDistributionLog(notification.sk);
+      res.json({ success: true, distribution: log });
+    } catch (err) {
+      res.status(500).json({ success: false, error: "Failed to retry distribution" });
+    }
+  }
+);
 
 export default router;

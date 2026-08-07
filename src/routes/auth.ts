@@ -10,6 +10,8 @@ import {
   signUpUser,
   updateProfile,
   getUserProfile,
+  getNotificationPreferences,
+  updateNotificationPreferences,
 } from "../services/authService";
 import { authenticateMe, getAdminRole, getAdminPermissions } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
@@ -131,8 +133,12 @@ router.post("/signin", async (req: Request, res: Response) => {
 
 router.get("/me", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const adminRole = getAdminRole(user?.sub);
-  const adminPermissions = getAdminPermissions(user?.sub);
+  const adminRole = await getAdminRole(user?.sub);
+  const adminPermissions = await getAdminPermissions(user?.sub);
+  // Include the full DynamoDB profile (state, category, qualification, etc.)
+  // so pages relying on checkAuthStatus() — e.g. the home feed's state
+  // personalization — see it without needing the separate /auth/profile call.
+  const fullProfile = await getUserProfile(user.sub).catch(() => null);
   return res.json({
     success: true,
     user: {
@@ -142,14 +148,15 @@ router.get("/me", authenticateMe, async (req: Request, res: Response) => {
       email: user.email,
       given_name: user.given_name,
       family_name: user.family_name,
+      ...(fullProfile as object),
     },
   });
 });
 
 router.get("/profile", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const adminRole = getAdminRole(user?.sub);
-  const adminPermissions = getAdminPermissions(user?.sub);
+  const adminRole = await getAdminRole(user?.sub);
+  const adminPermissions = await getAdminPermissions(user?.sub);
   try {
     const fullProfile = await getUserProfile(user.sub);
     return res.json({
@@ -179,11 +186,13 @@ router.put("/profile", authenticateMe, async (req: Request, res: Response) => {
   const accessToken = req.cookies.accessToken;
   const data = req.body;
   try {
-    await updateProfile(accessToken, user.sub, data);
+    const { cognitoSyncFailed } = await updateProfile(accessToken, user.sub, data);
     return res.status(200).json({
       status: 200,
       success: true,
-      message: "Profile updated successfully",
+      message: cognitoSyncFailed
+        ? "Profile updated. Name/gender could not be synced to your login account — please try updating those again later."
+        : "Profile updated successfully",
       data: {},
     });
   } catch (error: any) {
@@ -196,10 +205,58 @@ router.put("/profile", authenticateMe, async (req: Request, res: Response) => {
   }
 });
 
+// Notification delivery preferences — kept separate from /profile so this
+// endpoint can only ever touch email/whatsapp/topic fields, not profile data.
+router.get("/notification-preferences", authenticateMe, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    const preferences = await getNotificationPreferences(user.sub);
+    return res.json({ success: true, preferences });
+  } catch (error: any) {
+    return res.status(error.code || 400).json({
+      status: error.code || 400,
+      success: false,
+      message: error.message || "Failed to fetch notification preferences",
+      data: {},
+    });
+  }
+});
+
+router.put("/notification-preferences", authenticateMe, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const data = req.body;
+  try {
+    await updateNotificationPreferences(user.sub, data);
+    return res.status(200).json({
+      status: 200,
+      success: true,
+      message: "Notification preferences updated successfully",
+      data: {},
+    });
+  } catch (error: any) {
+    return res.status(error.code || 400).json({
+      status: error.code || 400,
+      success: false,
+      message: error.message || "Failed to update notification preferences",
+      data: {},
+    });
+  }
+});
+
 router.post("/logout", (req: Request, res: Response) => {
-  res.clearCookie("accessToken");
-  res.clearCookie("idToken");
-  res.clearCookie("refreshToken");
+  // clearCookie must be called with the same path/secure/sameSite the cookie
+  // was originally set with — otherwise the browser treats it as a different
+  // cookie and silently keeps the real one instead of overwriting it.
+  const isProd = process.env.RUNTIME_ENV === "lambda";
+  const clearOptions = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+    path: "/",
+  };
+  res.clearCookie("accessToken", clearOptions);
+  res.clearCookie("idToken", clearOptions);
+  res.clearCookie("refreshToken", clearOptions);
   res.json({ success: true, message: "Logged out" });
 });
 

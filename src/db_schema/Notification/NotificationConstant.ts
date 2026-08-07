@@ -32,6 +32,12 @@ export const NOTIFICATION = {
   source_url: "source_url",
   scraped_from: "scraped_from",
 
+  count_wishlisted: "count_wishlisted",
+  count_applied: "count_applied",
+  count_admit_card: "count_admit_card",
+  count_result: "count_result",
+  count_selected: "count_selected",
+
   comment: {
     comment_id: "comment_id",
     reviewer_sub: "reviewer_sub",
@@ -129,6 +135,12 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.approved_by,
   NOTIFICATION.review_status,
   NOTIFICATION.created_by,
+
+  NOTIFICATION.count_wishlisted,
+  NOTIFICATION.count_applied,
+  NOTIFICATION.count_admit_card,
+  NOTIFICATION.count_result,
+  NOTIFICATION.count_selected,
 ];
 
 export const HOME_PAGE_NOTIFICATION = [
@@ -152,6 +164,7 @@ export enum NOTIFICATION_TYPE {
   ELIGIBILITY = "ELIGIBILITY",
   LINKS = "LINKS",
   COMMENT = "COMMENT",
+  DISTRIBUTION = "DISTRIBUTION",
 }
 
 export enum NOTIFICATION_TYPE_MAPPER {
@@ -161,4 +174,5 @@ export enum NOTIFICATION_TYPE_MAPPER {
   ELIGIBILITY = "#ELIGIBILITY",
   LINKS = "#LINKS",
   COMMENT = "#COMMENT",
+  DISTRIBUTION = "#DISTRIBUTION",
 }

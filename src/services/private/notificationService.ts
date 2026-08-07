@@ -25,6 +25,9 @@ import {
 } from "../../library/util";
 import { logErrorLocation } from "../../utils/errorUtils";
 import { getUserProfile, getCognitoUserEmail } from "../authService";
+import { SendMessageCommand } from "@aws-sdk/client-sqs";
+import { sqsClient } from "../../aws/sqs.client";
+import { QUEUE_CONFIG } from "../../config/env";
 
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: INotification) {
@@ -625,6 +628,24 @@ export async function approveNotification(
       review_status: "approved",
     };
     await updateDynamoDB(pk, sk, attributesToUpdate);
+
+    // Publish one lightweight event to the fan-out queue instead of doing
+    // distribution/social work inline — this is a fast, awaited SQS publish
+    // (not fire-and-forget), so there's no risk of the Lambda freezing mid-send.
+    // The fan-out Lambda (src/notification-delivery/) does the actual work.
+    if (QUEUE_CONFIG.notificationFanoutQueueUrl) {
+      try {
+        await sqsClient.send(
+          new SendMessageCommand({
+            QueueUrl: QUEUE_CONFIG.notificationFanoutQueueUrl,
+            MessageBody: JSON.stringify({ notificationId: id, mode: "initial" }),
+          })
+        );
+      } catch (err) {
+        logErrorLocation("notificationService.ts", "approveNotification (fanout publish)", err, "Failed to publish fan-out event", "", { id });
+      }
+    }
+
     return attributesToUpdate;
   } catch (error) {
     logErrorLocation(
@@ -744,14 +765,24 @@ export async function permanentDeleteNotification(id: string): Promise<boolean> 
 
 /**
  * Bulk permanent delete of multiple notifications.
- * Each notification has multiple related entries (meta, detail, counts), 
+ * Each notification has multiple related entries (meta, detail, counts),
  * so we rely on the single permanentDeleteNotification logic for each.
  */
 export async function bulkPermanentDeleteNotifications(ids: string[]): Promise<boolean> {
   if (!ids || ids.length === 0) return true;
-  
+
   // Running in sequence or semi-parallel to avoid DynamoDB throttling if IDs list is huge
   // For small-to-medium batches, Promise.all is fine.
   await Promise.all(ids.map(id => permanentDeleteNotification(id)));
+  return true;
+}
+
+/**
+ * Bulk archive (soft delete) of multiple notifications.
+ */
+export async function bulkArchiveNotifications(ids: string[]): Promise<boolean> {
+  if (!ids || ids.length === 0) return true;
+
+  await Promise.all(ids.map(id => archiveNotification(id)));
   return true;
 }

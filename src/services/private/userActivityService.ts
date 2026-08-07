@@ -4,6 +4,7 @@ import {
     DeleteItemCommand,
     GetItemCommand,
     UpdateItemCommand,
+    ScanCommand,
 } from "@aws-sdk/client-dynamodb";
 import { marshall, unmarshall } from "@aws-sdk/util-dynamodb";
 import { dynamoDBClient } from "../../aws/dynamodb.client";
@@ -15,6 +16,72 @@ import {
 import { IUserActivity, MAX_ACTIVITY_ATTEMPTS } from "../../db_schema/UserActivity/UserActivityInterface";
 import { TABLE_PK_MAPPER } from "../../db_schema/shared/SharedConstant";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { getNotificationById } from "./notificationService";
+
+/**
+ * Extracts the bare notification id from a full SK like "Notification#<id>#META".
+ */
+function extractNotificationId(notificationSk: string): string {
+    return notificationSk
+        .replace(TABLE_PK_MAPPER.Notification, "")
+        .replace(/#META$/, "");
+}
+
+/**
+ * True if a notification's application deadline has already passed.
+ * `last_date_to_apply` is stored as a "YYYY-MM-DD" string with no time component.
+ */
+function isDeadlinePassed(lastDateToApply: string | undefined): boolean {
+    if (!lastDateToApply) return false;
+    const deadline = new Date(lastDateToApply).getTime();
+    if (isNaN(deadline)) return false;
+    return Date.now() > deadline;
+}
+
+/**
+ * Maps each activity status to the aggregate counter field maintained
+ * on the notification's META item.
+ */
+const STATUS_COUNT_FIELD: Record<USER_ACTIVITY_STATUS, string> = {
+    [USER_ACTIVITY_STATUS.WISHLISTED]: "count_wishlisted",
+    [USER_ACTIVITY_STATUS.APPLIED]: "count_applied",
+    [USER_ACTIVITY_STATUS.ADMIT_CARD]: "count_admit_card",
+    [USER_ACTIVITY_STATUS.RESULT]: "count_result",
+    [USER_ACTIVITY_STATUS.SELECTED]: "count_selected",
+};
+
+/**
+ * Atomically adjusts one of the aggregate activity counters on a notification's
+ * META item. Best-effort: failures are logged but never thrown, so a counter
+ * hiccup never blocks the user-facing tracking flow.
+ */
+async function adjustNotificationActivityCount(
+    notificationSk: string,
+    field: string,
+    delta: number
+): Promise<void> {
+    if (delta === 0) return;
+    try {
+        await dynamoDBClient.send(
+            new UpdateItemCommand({
+                TableName: DYNAMODB_CONFIG.TABLE_NAME,
+                Key: marshall({ pk: TABLE_PK_MAPPER.Notification, sk: notificationSk }),
+                UpdateExpression: "ADD #field :delta",
+                ExpressionAttributeNames: { "#field": field },
+                ExpressionAttributeValues: marshall({ ":delta": delta }),
+            })
+        );
+    } catch (err) {
+        logErrorLocation(
+            "userActivityService.ts",
+            "adjustNotificationActivityCount",
+            err,
+            "Failed to adjust notification activity count",
+            "",
+            { notificationSk, field, delta }
+        );
+    }
+}
 
 /**
  * Validates that the requested status transition follows the strict precedence:
@@ -110,8 +177,22 @@ export async function upsertUserActivity(
 
         // Check existing activity to enforce precedence
         const existing = await getUserActivityForNotification(userSub, notificationSk);
+        const currentStatus = existing ? existing.status : null;
 
-        if (!isValidStatusTransition(existing?.status || null, status)) {
+        // Block wishlisting/applying once the deadline has passed — but once a user has
+        // already applied, they can keep marking next steps regardless of the deadline.
+        const hasAlreadyApplied =
+            currentStatus !== null && currentStatus >= USER_ACTIVITY_STATUS.APPLIED;
+        if (!hasAlreadyApplied && status <= USER_ACTIVITY_STATUS.APPLIED) {
+            const notification = await getNotificationById(extractNotificationId(notificationSk));
+            if (notification && isDeadlinePassed(notification.last_date_to_apply)) {
+                throw new Error(
+                    "DEADLINE_PASSED: The last date to apply for this notification has passed. You can no longer wishlist or apply."
+                );
+            }
+        }
+
+        if (!isValidStatusTransition(currentStatus, status)) {
             const currentIndex = existing
                 ? ACTIVITY_STATUS_ORDER.indexOf(existing.status)
                 : -1;
@@ -161,6 +242,14 @@ export async function upsertUserActivity(
                 Item: marshall(item, { removeUndefinedValues: true }),
             })
         );
+
+        // Keep the notification's aggregate activity counters in sync.
+        if (!existing) {
+            await adjustNotificationActivityCount(notificationSk, STATUS_COUNT_FIELD[status], 1);
+        } else if (existing.status !== status) {
+            await adjustNotificationActivityCount(notificationSk, STATUS_COUNT_FIELD[existing.status], -1);
+            await adjustNotificationActivityCount(notificationSk, STATUS_COUNT_FIELD[status], 1);
+        }
 
         return item;
     } catch (error) {
@@ -253,12 +342,18 @@ export async function deleteUserActivity(
     try {
         const pk = `${TABLE_PK_MAPPER.User}${userSub}`;
 
+        const existing = await getUserActivityForNotification(userSub, notificationSk);
+
         await dynamoDBClient.send(
             new DeleteItemCommand({
                 TableName: DYNAMODB_CONFIG.TABLE_NAME,
                 Key: marshall({ pk, sk: notificationSk }),
             })
         );
+
+        if (existing) {
+            await adjustNotificationActivityCount(notificationSk, STATUS_COUNT_FIELD[existing.status], -1);
+        }
 
         return true;
     } catch (error) {
@@ -272,4 +367,77 @@ export async function deleteUserActivity(
         );
         throw error;
     }
+}
+
+/**
+ * One-time migration: recomputes every notification's aggregate activity
+ * counters from the existing UserActivity records. Needed because counters
+ * are only maintained incrementally going forward — this backfills counts
+ * for activity tracked before the counter feature existed.
+ *
+ * Scans the whole table once (admin-triggered, not a hot path).
+ */
+export async function backfillActivityCounts(): Promise<{
+    notificationsUpdated: number;
+    notificationsSkipped: number;
+    activitiesScanned: number;
+}> {
+    const tally = new Map<string, Partial<Record<USER_ACTIVITY_STATUS, number>>>();
+    let activitiesScanned = 0;
+    let exclusiveStartKey: Record<string, any> | undefined = undefined;
+
+    do {
+        const result = await dynamoDBClient.send(
+            new ScanCommand({
+                TableName: DYNAMODB_CONFIG.TABLE_NAME,
+                FilterExpression: "begins_with(pk, :userPrefix) AND begins_with(sk, :notifPrefix)",
+                ExpressionAttributeValues: marshall({
+                    ":userPrefix": TABLE_PK_MAPPER.User,
+                    ":notifPrefix": TABLE_PK_MAPPER.Notification,
+                }),
+                ExclusiveStartKey: exclusiveStartKey,
+            })
+        );
+
+        for (const rawItem of result.Items || []) {
+            const item = unmarshall(rawItem) as IUserActivity;
+            activitiesScanned++;
+            const statusCounts = tally.get(item.sk) || {};
+            statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
+            tally.set(item.sk, statusCounts);
+        }
+
+        exclusiveStartKey = result.LastEvaluatedKey;
+    } while (exclusiveStartKey);
+
+    let notificationsUpdated = 0;
+    let notificationsSkipped = 0;
+
+    for (const [notificationSk, statusCounts] of tally.entries()) {
+        try {
+            await dynamoDBClient.send(
+                new UpdateItemCommand({
+                    TableName: DYNAMODB_CONFIG.TABLE_NAME,
+                    Key: marshall({ pk: TABLE_PK_MAPPER.Notification, sk: notificationSk }),
+                    ConditionExpression: "attribute_exists(sk)",
+                    UpdateExpression:
+                        "SET count_wishlisted = :w, count_applied = :a, count_admit_card = :ac, count_result = :r, count_selected = :s",
+                    ExpressionAttributeValues: marshall({
+                        ":w": statusCounts[USER_ACTIVITY_STATUS.WISHLISTED] || 0,
+                        ":a": statusCounts[USER_ACTIVITY_STATUS.APPLIED] || 0,
+                        ":ac": statusCounts[USER_ACTIVITY_STATUS.ADMIT_CARD] || 0,
+                        ":r": statusCounts[USER_ACTIVITY_STATUS.RESULT] || 0,
+                        ":s": statusCounts[USER_ACTIVITY_STATUS.SELECTED] || 0,
+                    }),
+                })
+            );
+            notificationsUpdated++;
+        } catch (err) {
+            // Most likely cause: the notification behind this activity record was
+            // permanently deleted — skip rather than resurrecting a phantom item.
+            notificationsSkipped++;
+        }
+    }
+
+    return { notificationsUpdated, notificationsSkipped, activitiesScanned };
 }

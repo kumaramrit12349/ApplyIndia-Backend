@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { authenticateToken } from "../../middlewares/authMiddleware";
+import { authenticateToken, authenticateTokenAndEmail, requireRole } from "../../middlewares/authMiddleware";
 import {
     upsertUserActivity,
     getUserActivities,
     getUserActivityForNotification,
     deleteUserActivity,
+    backfillActivityCounts,
 } from "../../services/private/userActivityService";
 import { USER_ACTIVITY_STATUS, ACTIVITY_STATUS_ORDER } from "../../db_schema/UserActivity/UserActivityConstant";
 
@@ -49,6 +50,7 @@ router.post("/track", async (req, res) => {
         let statusCode = 500;
         if (msg.includes("Invalid status transition")) statusCode = 400;
         if (msg.includes("ATTEMPT_LIMIT_REACHED")) statusCode = 429;
+        if (msg.includes("DEADLINE_PASSED")) statusCode = 400;
 
         res.status(statusCode).json({
             success: false,
@@ -127,5 +129,29 @@ router.delete("/remove/:notificationSk", async (req, res) => {
         });
     }
 });
+
+/**
+ * POST /api/user-activity/backfill-counts
+ * One-time migration: recomputes every notification's aggregate activity
+ * counters (wishlisted/applied/admit_card/result/selected) from existing
+ * UserActivity records. Admin only. Scans the whole table — not a hot path,
+ * only meant to be triggered manually after deploying the counters feature.
+ */
+router.post(
+    "/backfill-counts",
+    authenticateTokenAndEmail,
+    requireRole("admin"),
+    async (_req, res) => {
+        try {
+            const result = await backfillActivityCounts();
+            res.json({ success: true, ...result });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                error: "Failed to backfill activity counts",
+            });
+        }
+    }
+);
 
 export default router;

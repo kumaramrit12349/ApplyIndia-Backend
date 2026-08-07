@@ -67,6 +67,7 @@ export const ALL_TABLE_NAMES = {
   Feedback: "Feedback",
   User: "User",
   Site: "Site",
+  EmailTemplate: "EmailTemplate",
 };
 
 export const TABLE_PK_MAPPER = {
@@ -74,6 +75,7 @@ export const TABLE_PK_MAPPER = {
   Feedback: "Feedback#",
   User: "User#",
   Site: "Site#",
+  EmailTemplate: "EmailTemplate#",
 };
 
 export const INSERT_ITEM_MAPPER = {

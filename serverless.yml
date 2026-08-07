@@ -39,6 +39,13 @@ provider:
     COGNITO_DOMAIN: ${env:COGNITO_DOMAIN}
     GOOGLE_CALLBACK_URL: ${env:GOOGLE_CALLBACK_URL}
     FRONTEND_URL: ${env:FRONTEND_URL}
+    # Notification distribution — all optional, default empty so deploys
+    # don't fail if they're not set in the deploy environment.
+    SES_SENDER_EMAIL: ${env:SES_SENDER_EMAIL, 'support@applyindia.online'}
+    # Notification delivery fan-out queues (see resources: below) — Refs to
+    # CloudFormation resources in this same template, not env-var overrides.
+    NOTIFICATION_FANOUT_QUEUE_URL: !Ref NotificationFanoutQueue
+    NOTIFICATION_EMAIL_JOBS_QUEUE_URL: !Ref NotificationEmailJobsQueue
 
   ################################
   # ✅ IAM PERMISSIONS
@@ -57,6 +64,27 @@ provider:
           Resource:
             - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}
             - arn:aws:dynamodb:${self:provider.region}:*:table/ApplyIndia-${self:provider.stage}/index/*
+        - Effect: Allow
+          Action:
+            - ses:SendEmail
+            - ses:SendRawEmail
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:SendMessageBatch
+          Resource:
+            - !GetAtt NotificationFanoutQueue.Arn
+            - !GetAtt NotificationEmailJobsQueue.Arn
+        - Effect: Allow
+          Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+            - sqs:ChangeMessageVisibility
+          Resource:
+            - !GetAtt NotificationFanoutQueue.Arn
+            - !GetAtt NotificationEmailJobsQueue.Arn
 
   ################################
   # ✅ HTTP API + CORS + COGNITO
@@ -104,6 +132,7 @@ functions:
 
   private:
     handler: dist/lambda.handler
+    timeout: 29   # API Gateway HTTP API's hard integration ceiling is 30s anyway
     events:
       - httpApi:
           path: /api/{proxy+}
@@ -111,6 +140,37 @@ functions:
 
           # authorizer:
           #   name: cognitoJwtAuthorizer
+
+  # ─── Notification Delivery Fan-Out ────────────────────────────────────────
+  # approveNotification() publishes one event here instead of sending emails
+  # inline. This Lambda enumerates eligible users (paged, bounded memory) and
+  # enqueues one send job per user to the email jobs queue below.
+  notificationFanout:
+    handler: dist/notification-delivery/notificationFanoutLambda.handler
+    timeout: 900
+    memorySize: 1024
+    description: "Enumerates eligible users and enqueues per-user notification send jobs"
+    events:
+      - sqs:
+          arn: !GetAtt NotificationFanoutQueue.Arn
+          batchSize: 1
+
+  # ─── Email Sender ──────────────────────────────────────────────────────────
+  # Sends one batch of email jobs via SES. reservedConcurrency caps how many
+  # of these can run at once, so SES's rate limits are respected without
+  # hand-rolled throttling logic.
+  notificationEmailSender:
+    handler: dist/notification-delivery/notificationEmailSenderLambda.handler
+    timeout: 30
+    memorySize: 256
+    reservedConcurrency: 5
+    description: "Sends a batch of email notification jobs via SES"
+    events:
+      - sqs:
+          arn: !GetAtt NotificationEmailJobsQueue.Arn
+          batchSize: 10
+          maximumBatchingWindow: 5
+          functionResponseType: ReportBatchItemFailures
 
   # ─── Scraper Lambda ────────────────────────────────────────────────────────
   # Triggered by EventBridge every 4 hours.
@@ -126,3 +186,40 @@ functions:
           enabled: false # Disabled: Using manual trigger from Admin Dashboard as per user request
           name: applyindia-scraper-${self:provider.stage}
           description: "Triggers the notification scraper every 4 hours (Currently Disabled)"
+
+################################
+# ✅ RESOURCES (Notification delivery SQS queues + dead-letter queues)
+################################
+resources:
+  Resources:
+    NotificationFanoutDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: applyindia-${self:provider.stage}-notification-fanout-dlq
+        MessageRetentionPeriod: 1209600   # 14 days
+
+    NotificationFanoutQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: applyindia-${self:provider.stage}-notification-fanout
+        VisibilityTimeout: 960            # fan-out Lambda timeout (900s) + buffer
+        MessageRetentionPeriod: 345600    # 4 days
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt NotificationFanoutDLQ.Arn
+          maxReceiveCount: 3
+
+    NotificationEmailJobsDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: applyindia-${self:provider.stage}-notification-email-jobs-dlq
+        MessageRetentionPeriod: 1209600
+
+    NotificationEmailJobsQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: applyindia-${self:provider.stage}-notification-email-jobs
+        VisibilityTimeout: 180            # 6x the email sender Lambda's 30s timeout
+        MessageRetentionPeriod: 345600
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt NotificationEmailJobsDLQ.Arn
+          maxReceiveCount: 5

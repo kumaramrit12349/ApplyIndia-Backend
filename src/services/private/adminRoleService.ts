@@ -9,10 +9,16 @@ import { QueryCommandInput } from "@aws-sdk/client-dynamodb";
 
 /* ================================================================
    HARDCODED SUPER-ADMIN FALLBACK (lock-out safety net)
+
+   Keyed by EMAIL, not Cognito `sub`. A `sub` is permanently tied to one
+   specific Cognito user record — if that account is ever deleted (e.g.
+   during testing) and a new account is created with the same email,
+   Cognito issues a brand-new `sub`, which would silently break a
+   sub-keyed fallback. Keying by email survives that: whichever account
+   currently owns this email is treated as a super-admin.
    ================================================================ */
-const SUPER_ADMIN_SUBS: Record<string, AdminRole> = {
-  "71e3ed0a-50e1-703a-f403-b96b7377db22": "admin",
-  "41134dfa-8081-7054-8696-98f8c6c26461": "admin",
+const SUPER_ADMIN_EMAILS: Record<string, AdminRole> = {
+  "support@applyindia.online": "admin",
 };
 
 /* ================================================================
@@ -90,10 +96,12 @@ export async function assignRole(
 /* ================================================================
    3. REMOVE ROLE
    Removes admin_role + admin_permissions from a User record.
-   Cannot remove super-admin fallback users.
+   Cannot remove super-admin fallback users (checked by their current
+   email, since the fallback itself is keyed by email — see above).
    ================================================================ */
 export async function removeRole(sub: string): Promise<void> {
-  if (SUPER_ADMIN_SUBS[sub]) {
+  const email = await getUserEmailBySub(sub);
+  if (email && SUPER_ADMIN_EMAILS[email]) {
     throw new Error("Cannot remove super-admin role. This user is a system-level admin.");
   }
 
@@ -154,31 +162,29 @@ export async function lookupUserByEmail(
 
 /* ================================================================
    5. SEED DEFAULT ADMIN ROLES
-   One-time migration: writes admin_role + permissions to the
-   existing hardcoded admin subs. Idempotent — skips if already set.
+   One-time migration: writes admin_role + permissions onto whichever
+   User record currently owns each hardcoded super-admin email.
+   Idempotent — skips if that user already has a role, or if no user
+   with that email exists yet (e.g. hasn't signed up).
    ================================================================ */
 export async function seedDefaultAdminRoles(): Promise<void> {
-  const defaults = Object.entries(SUPER_ADMIN_SUBS).map(([sub, role]) => ({
-    sub,
+  const defaults = Object.entries(SUPER_ADMIN_EMAILS).map(([email, role]) => ({
+    email,
     role,
   }));
 
-
-  for (const { sub, role } of defaults) {
+  for (const { email, role } of defaults) {
     try {
-      const pk = TABLE_PK_MAPPER.User;
-      const sk = `${pk}${sub}`;
-      const results = await fetchDynamoDB<IUser>("User", sk);
+      const user = await lookupUserByEmail(email);
 
-      if (results.length === 0) {
-        console.log(`[SeedAdminRoles] User ${sub} not found in DB, skipping.`);
+      if (!user || !user.sub) {
+        console.log(`[SeedAdminRoles] No user found with email ${email}, skipping.`);
         continue;
       }
 
-      const user = results[0];
       if (user.admin_role) {
         console.log(
-          `[SeedAdminRoles] User ${sub} already has role "${user.admin_role}", skipping.`
+          `[SeedAdminRoles] User ${email} already has role "${user.admin_role}", skipping.`
         );
         continue;
       }
@@ -191,18 +197,32 @@ export async function seedDefaultAdminRoles(): Promise<void> {
         assigned_at: Date.now(),
       };
 
-      await assignRole(sub, role, permissions, "system-seed");
-      console.log(`[SeedAdminRoles] Assigned role "${role}" to ${sub}`);
+      await assignRole(user.sub, role, permissions, "system-seed");
+      console.log(`[SeedAdminRoles] Assigned role "${role}" to ${email} (sub: ${user.sub})`);
     } catch (err) {
-      console.error(`[SeedAdminRoles] Failed to seed ${sub}:`, err);
+      console.error(`[SeedAdminRoles] Failed to seed ${email}:`, err);
     }
   }
 }
 
 /* ================================================================
-   6. GET SUPER ADMIN FALLBACK
-   Exposed so authMiddleware can use the hardcoded fallback.
+   6. GET SUPER ADMIN EMAIL FALLBACK
+   Exposed so authMiddleware can use the hardcoded fallback (keyed by
+   email — see SUPER_ADMIN_EMAILS above for why).
    ================================================================ */
-export function getSuperAdminFallback(): Record<string, AdminRole> {
-  return { ...SUPER_ADMIN_SUBS };
+export function getSuperAdminEmailFallback(): Record<string, AdminRole> {
+  return { ...SUPER_ADMIN_EMAILS };
+}
+
+/**
+ * Looks up a user's current email by their Cognito sub. Used by
+ * authMiddleware's super-admin fallback check, which only has a sub
+ * (from the JWT) and needs the associated email to check against
+ * SUPER_ADMIN_EMAILS.
+ */
+export async function getUserEmailBySub(sub: string): Promise<string | null> {
+  const pk = TABLE_PK_MAPPER.User;
+  const sk = `${pk}${sub}`;
+  const results = await fetchDynamoDB<IUser>("User", sk);
+  return results[0]?.email?.toLowerCase() || null;
 }

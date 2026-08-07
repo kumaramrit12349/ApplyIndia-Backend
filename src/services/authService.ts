@@ -22,6 +22,7 @@ import { fetchDynamoDB } from "../Interpreter/dynamoDB/fetchCalls";
 import { UpdateUserAttributesCommand } from "@aws-sdk/client-cognito-identity-provider";
 import https from "https";
 import { COGNITO_CONFIG } from "../config/env";
+import { TOPICS } from "../utils/topicUtils";
 
 const cognito = new CognitoIdentityProviderClient({
   region: process.env.AWS_REGION,
@@ -118,6 +119,12 @@ export async function signUpUser(data: RegisterRequest) {
       const userData = {
         ...data,
         sub: response.UserSub,
+        // insertItemIntoDynamoDB auto-generates a random sk if none is given —
+        // must be User#<sub> explicitly so profile/preferences lookups (which
+        // key on User#<sub>) can find this row.
+        sk: `${TABLE_PK_MAPPER.User}${response.UserSub}`,
+        email_notifications: true,
+        whatsapp_notifications: true,
       };
       // remove password before storing in DynamoDB
       delete (userData as any).password;
@@ -293,7 +300,11 @@ export async function resetPassword(
 }
 
 export async function updateProfile(accessToken: string, sub: string, data: Partial<IUser>) {
-  // 1. Update Cognito (only specific fields)
+  // 1. Update Cognito (only specific fields). Best-effort: a Cognito sync
+  // failure (e.g. access token missing the required OAuth scope) should
+  // never block saving the rest of the profile (state, qualification,
+  // percentage, etc.) to DynamoDB below.
+  let cognitoSyncFailed = false;
   const cognitoAttributes = [];
   if (data.given_name) cognitoAttributes.push({ Name: "given_name", Value: data.given_name });
   if (data.family_name) cognitoAttributes.push({ Name: "family_name", Value: data.family_name });
@@ -308,9 +319,7 @@ export async function updateProfile(accessToken: string, sub: string, data: Part
       await cognito.send(cmd);
     } catch (error: any) {
       logErrorLocation("authService.ts", "updateProfile (Cognito)", error, "AWS Cognito update error", "", { sub });
-      // We might want to continue even if Cognito update fails, or throw
-      // For now, if Cognito fails, we throw
-      throw error;
+      cognitoSyncFailed = true;
     }
   }
 
@@ -352,6 +361,8 @@ export async function updateProfile(accessToken: string, sub: string, data: Part
       throw error;
     }
   }
+
+  return { cognitoSyncFailed };
 }
 
 export async function getUserProfile(sub: string) {
@@ -362,6 +373,69 @@ export async function getUserProfile(sub: string) {
     return results.length > 0 ? (results[0] as IUser) : null;
   } catch (error: any) {
     logErrorLocation("authService.ts", "getUserProfile", error, "DynamoDB fetch error", "", { sub });
+    throw error;
+  }
+}
+
+export interface INotificationPreferences {
+  email_notifications?: boolean;
+  whatsapp_notifications?: boolean;
+  subscribed_topics?: string[];
+}
+
+// Only these keys are ever written by updateNotificationPreferences, even if
+// the request body contains other IUser fields — keeps this endpoint from
+// being usable to change profile data that PUT /auth/profile owns.
+const NOTIFICATION_PREFERENCE_FIELDS = ["email_notifications", "whatsapp_notifications", "subscribed_topics"] as const;
+const VALID_TOPIC_VALUES = new Set(TOPICS.map((t) => t.value));
+
+export async function getNotificationPreferences(sub: string): Promise<INotificationPreferences> {
+  const user = await getUserProfile(sub);
+  return {
+    email_notifications: user?.email_notifications !== false,
+    whatsapp_notifications: user?.whatsapp_notifications !== false,
+    subscribed_topics: user?.subscribed_topics || [],
+  };
+}
+
+export async function updateNotificationPreferences(sub: string, data: INotificationPreferences): Promise<void> {
+  if (data.subscribed_topics) {
+    const invalidTopics = data.subscribed_topics.filter((t) => !VALID_TOPIC_VALUES.has(t));
+    if (invalidTopics.length > 0) {
+      createThrowError(400, "BadRequest", `Invalid topic(s): ${invalidTopics.join(", ")}`, { invalidTopics });
+    }
+  }
+
+  const pk = TABLE_PK_MAPPER.User;
+  const sk = `${TABLE_PK_MAPPER.User}${sub}`;
+
+  const expressions: string[] = [];
+  const expressionAttributeValues: any = {};
+  const expressionAttributeNames: any = {};
+
+  NOTIFICATION_PREFERENCE_FIELDS.forEach((key, index) => {
+    const value = data[key];
+    if (value === undefined) return;
+    const nameKey = `#field${index}`;
+    const valueKey = `:val${index}`;
+    expressions.push(`${nameKey} = ${valueKey}`);
+    expressionAttributeNames[nameKey] = key;
+    expressionAttributeValues[valueKey] = value;
+  });
+
+  if (expressions.length === 0) return;
+
+  const updateItemParam = {
+    Key: { pk, sk },
+    UpdateExpression: "set " + expressions.join(", "),
+    ExpressionAttributeNames: expressionAttributeNames,
+    ExpressionAttributeValues: expressionAttributeValues,
+  };
+
+  try {
+    await updateItemDynamoDB(updateItemParam);
+  } catch (error: any) {
+    logErrorLocation("authService.ts", "updateNotificationPreferences", error, "DynamoDB update error", "", { sub, data });
     throw error;
   }
 }
@@ -494,6 +568,8 @@ export async function getOrCreateGoogleUser(idToken: string): Promise<{
       sub,
       auth_provider: "google",
       is_verified: true,
+      email_notifications: true,
+      whatsapp_notifications: true,
     };
 
     // insertItemIntoDynamoDB auto-generates pk/sk — but for users we want sk = User#<sub>

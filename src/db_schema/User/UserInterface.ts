@@ -9,6 +9,8 @@ export interface IUser {
     family_name: string;
     gender: string;
     dob?: string;
+    /** E.164 format (e.g. "+919876543210"). Required for WhatsApp delivery. */
+    phone?: string;
 
     /* Location & Identity */
     state: string;
@@ -18,6 +20,8 @@ export interface IUser {
     qualification: string; // 10th, 12th, Graduate, etc.
     specialization?: string;
     min_percentage?: number;
+    /** Percentage/CGPA-equivalent the user actually obtained in their highest qualification. Used for eligibility checks. */
+    qualification_percentage?: number;
 
     /* Flags/Meta */
     is_verified?: boolean;
@@ -29,9 +33,17 @@ export interface IUser {
     /* Admin Role & Permissions */
     admin_role?: AdminRole | null;
     admin_permissions?: IAdminPermissions | null;
+
+    /* Notification Delivery Preferences */
+    /** Default true — undefined is treated as enabled for pre-existing users. */
+    email_notifications?: boolean;
+    /** Default true — undefined is treated as enabled for pre-existing users. */
+    whatsapp_notifications?: boolean;
+    /** Topic keys (see TOPICS in utils/topicUtils.ts). Empty/undefined = no filter, receive all topics. */
+    subscribed_topics?: string[];
 }
 
-export type AdminRole = "creator" | "reviewer" | "admin";
+export type AdminRole = "creator" | "reviewer" | "senior_reviewer" | "admin";
 
 export type DataWindow =
     | "last_1_month"

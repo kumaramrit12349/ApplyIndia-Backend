@@ -35,6 +35,22 @@ export const COGNITO_CONFIG = {
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 };
 
+// Notification distribution — all optional. Each service checks its own
+// config presence and no-ops (logs + skips) rather than throwing when
+// unconfigured, so the app works fully without any of these.
+export const EMAIL_CONFIG = {
+  senderAddress: process.env.SES_SENDER_EMAIL,
+  region: process.env.AWS_REGION,
+};
+
+// SQS queue URLs backing the notification delivery fan-out. Set by
+// serverless.yml (!Ref to the CloudFormation-managed queues) when deployed;
+// must be set manually in local.env for local testing against real dev queues.
+export const QUEUE_CONFIG = {
+  notificationFanoutQueueUrl: process.env.NOTIFICATION_FANOUT_QUEUE_URL,
+  notificationEmailJobsQueueUrl: process.env.NOTIFICATION_EMAIL_JOBS_QUEUE_URL,
+};
+
 // ====== VALIDATION (VERY IMPORTANT) ======
 if (!process.env.COGNITO_USER_POOL_ID) {
   throw new Error("COGNITO_USER_POOL_ID missing");

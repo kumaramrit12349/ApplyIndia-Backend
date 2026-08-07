@@ -26,10 +26,12 @@ router.get("/latest", async (_req, res) => {
   }
 });
 
-// Home page notifications
-router.get("/home", async (_req, res) => {
+// Home page notifications — personalized by state.
+// ?state=<code> -> Central + that state; ?state=all -> unfiltered; omitted -> Central only.
+router.get("/home", async (req, res) => {
   try {
-    const grouped = await getHomePageNotifications();
+    const stateFilter = typeof req.query.state === "string" ? req.query.state : undefined;
+    const grouped = await getHomePageNotifications(stateFilter);
     res.json({ success: true, data: grouped });
   } catch (err) {
     res.status(500).json({
