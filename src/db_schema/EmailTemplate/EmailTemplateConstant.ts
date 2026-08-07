@@ -7,7 +7,6 @@ export const EMAIL_TEMPLATE = {
   description: "description",
   created_at: "created_at",
   modified_at: "modified_at",
-  created_by: "created_by",
 };
 
 // Fixed keys the codebase looks up templates by — add one per email "type"

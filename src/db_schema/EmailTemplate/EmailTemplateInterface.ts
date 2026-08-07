@@ -11,5 +11,4 @@ export interface IEmailTemplate {
   description?: string;
   created_at?: number;
   modified_at?: number;
-  created_by?: string;
 }

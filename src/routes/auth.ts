@@ -133,8 +133,8 @@ router.post("/signin", async (req: Request, res: Response) => {
 
 router.get("/me", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const adminRole = getAdminRole(user?.sub);
-  const adminPermissions = getAdminPermissions(user?.sub);
+  const adminRole = await getAdminRole(user?.sub);
+  const adminPermissions = await getAdminPermissions(user?.sub);
   // Include the full DynamoDB profile (state, category, qualification, etc.)
   // so pages relying on checkAuthStatus() — e.g. the home feed's state
   // personalization — see it without needing the separate /auth/profile call.
@@ -155,8 +155,8 @@ router.get("/me", authenticateMe, async (req: Request, res: Response) => {
 
 router.get("/profile", authenticateMe, async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const adminRole = getAdminRole(user?.sub);
-  const adminPermissions = getAdminPermissions(user?.sub);
+  const adminRole = await getAdminRole(user?.sub);
+  const adminPermissions = await getAdminPermissions(user?.sub);
   try {
     const fullProfile = await getUserProfile(user.sub);
     return res.json({
@@ -244,9 +244,19 @@ router.put("/notification-preferences", authenticateMe, async (req: Request, res
 });
 
 router.post("/logout", (req: Request, res: Response) => {
-  res.clearCookie("accessToken");
-  res.clearCookie("idToken");
-  res.clearCookie("refreshToken");
+  // clearCookie must be called with the same path/secure/sameSite the cookie
+  // was originally set with — otherwise the browser treats it as a different
+  // cookie and silently keeps the real one instead of overwriting it.
+  const isProd = process.env.RUNTIME_ENV === "lambda";
+  const clearOptions = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+    path: "/",
+  };
+  res.clearCookie("accessToken", clearOptions);
+  res.clearCookie("idToken", clearOptions);
+  res.clearCookie("refreshToken", clearOptions);
   res.json({ success: true, message: "Logged out" });
 });
 

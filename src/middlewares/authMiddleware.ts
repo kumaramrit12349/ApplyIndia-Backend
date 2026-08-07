@@ -7,7 +7,8 @@ import {
 } from "../db_schema/User/UserInterface";
 import {
   getAllAdminUsers,
-  getSuperAdminFallback,
+  getSuperAdminEmailFallback,
+  getUserEmailBySub,
   seedDefaultAdminRoles,
 } from "../services/private/adminRoleService";
 import { getNotificationById } from "../services/private/notificationService";
@@ -104,27 +105,41 @@ export async function initAdminRoleSystem(): Promise<void> {
 
 /* ======================== ROLE LOOKUPS ======================== */
 
-const SUPER_ADMIN_FALLBACK = getSuperAdminFallback();
+const SUPER_ADMIN_EMAIL_FALLBACK = getSuperAdminEmailFallback();
+
+/**
+ * Checks whether `sub`'s current email (looked up fresh from DynamoDB) is
+ * one of the hardcoded super-admin emails. Only called once the fast
+ * cache-by-sub lookup has already missed, so this DynamoDB round-trip only
+ * happens for the rare lock-out-safety-net path, not on every request.
+ */
+async function getSuperAdminRoleBySub(sub: string): Promise<AdminRole | null> {
+  const email = await getUserEmailBySub(sub);
+  if (!email) return null;
+  return SUPER_ADMIN_EMAIL_FALLBACK[email] ?? null;
+}
 
 /** Returns the admin role for a given sub, or null if not an admin user. */
-export const getAdminRole = (sub: string): AdminRole | null => {
+export const getAdminRole = async (sub: string): Promise<AdminRole | null> => {
   // Check in-memory cache first
   const cached = adminCache.get(sub);
   if (cached) return cached.role;
 
-  // Fallback for super-admins (lock-out safety)
-  return SUPER_ADMIN_FALLBACK[sub] ?? null;
+  // Fallback for super-admins (lock-out safety) — checked by email, not
+  // sub, so it survives the account being deleted/recreated.
+  return getSuperAdminRoleBySub(sub);
 };
 
 /** Returns the admin permissions for a given sub, or null. */
-export const getAdminPermissions = (
+export const getAdminPermissions = async (
   sub: string
-): IAdminPermissions | null => {
+): Promise<IAdminPermissions | null> => {
   const cached = adminCache.get(sub);
   if (cached) return cached.permissions;
 
   // Super-admin fallback = unrestricted
-  if (SUPER_ADMIN_FALLBACK[sub]) {
+  const fallbackRole = await getSuperAdminRoleBySub(sub);
+  if (fallbackRole) {
     return {
       categories: ["all"],
       states: ["all"],
@@ -136,8 +151,8 @@ export const getAdminPermissions = (
 };
 
 /** Legacy helper — checks if sub has any admin role */
-export const isSubAllowed = (sub: string): boolean =>
-  !!getAdminRole(sub);
+export const isSubAllowed = async (sub: string): Promise<boolean> =>
+  !!(await getAdminRole(sub));
 
 /* ======================== PERMISSION HELPERS ======================== */
 
@@ -275,14 +290,14 @@ export const authenticateTokenAndEmail = async (
       // Ensure cache is fresh
       await ensureCache();
 
-      const role = getAdminRole(decoded?.sub);
+      const role = await getAdminRole(decoded?.sub);
       if (!role) {
         return res
           .status(403)
           .json({ error: "You need Admin Access for it!" });
       }
 
-      const permissions = getAdminPermissions(decoded?.sub);
+      const permissions = await getAdminPermissions(decoded?.sub);
 
       req.user = decoded;
       req.adminRole = role;

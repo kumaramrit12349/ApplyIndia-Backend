@@ -23,6 +23,10 @@ import {
 } from "../../middlewares/authMiddleware";
 import { IAdminPermissions } from "../../db_schema/User/UserInterface";
 import { getUserProfile, getCognitoUserEmail } from "../../services/authService";
+import { getDistributionLog, getNotificationId } from "../../services/private/notificationDistributionService";
+import { SendMessageCommand } from "@aws-sdk/client-sqs";
+import { sqsClient } from "../../aws/sqs.client";
+import { QUEUE_CONFIG } from "../../config/env";
 
 const router = Router();
 router.use(authenticateTokenAndEmail);
@@ -306,5 +310,52 @@ router.delete("/bulk-archive", requireRole("senior_reviewer", "admin"), async (r
     res.status(500).json({ success: false, error: "Failed to bulk archive notifications" });
   }
 });
+
+// Get delivery/publishing status for a notification — Reviewer, Senior Reviewer, Admin
+router.get(
+  "/:id/distribution-status",
+  requireRole("reviewer", "senior_reviewer", "admin"),
+  async (req, res) => {
+    try {
+      const notification = await getNotificationById(req.params.id);
+      if (!notification || !notification.sk) {
+        return res.status(404).json({ success: false, error: "Notification not found" });
+      }
+      const log = await getDistributionLog(notification.sk);
+      res.json({ success: true, distribution: log });
+    } catch (err) {
+      res.status(500).json({ success: false, error: "Failed to fetch distribution status" });
+    }
+  }
+);
+
+// Retry failed distribution for a notification — Senior Reviewer, Admin
+router.post(
+  "/:id/retry-distribution",
+  requireRole("senior_reviewer", "admin"),
+  async (req, res) => {
+    try {
+      const notification = await getNotificationById(req.params.id);
+      if (!notification || !notification.sk) {
+        return res.status(404).json({ success: false, error: "Notification not found" });
+      }
+      // Re-runs the queue-based fan-out (same as approval) instead of a
+      // synchronous loop, since retrying could involve re-enumerating a
+      // very large eligible-user list.
+      if (QUEUE_CONFIG.notificationFanoutQueueUrl) {
+        await sqsClient.send(
+          new SendMessageCommand({
+            QueueUrl: QUEUE_CONFIG.notificationFanoutQueueUrl,
+            MessageBody: JSON.stringify({ notificationId: getNotificationId(notification.sk), mode: "retry" }),
+          })
+        );
+      }
+      const log = await getDistributionLog(notification.sk);
+      res.json({ success: true, distribution: log });
+    } catch (err) {
+      res.status(500).json({ success: false, error: "Failed to retry distribution" });
+    }
+  }
+);
 
 export default router;
