@@ -38,4 +38,6 @@ jobs:
           COGNITO_DOMAIN: ${{ secrets.PROD_COGNITO_DOMAIN }}
           GOOGLE_CALLBACK_URL: ${{ secrets.PROD_GOOGLE_CALLBACK_URL }}
           FRONTEND_URL: ${{ secrets.PROD_FRONTEND_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHANNEL_ID: ${{ secrets.TELEGRAM_CHANNEL_ID }}
         run: npx serverless@3 deploy --stage prod

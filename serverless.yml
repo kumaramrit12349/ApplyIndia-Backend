@@ -46,6 +46,10 @@ provider:
     # CloudFormation resources in this same template, not env-var overrides.
     NOTIFICATION_FANOUT_QUEUE_URL: !Ref NotificationFanoutQueue
     NOTIFICATION_EMAIL_JOBS_QUEUE_URL: !Ref NotificationEmailJobsQueue
+    NOTIFICATION_SOCIAL_QUEUE_URL: !Ref NotificationSocialQueue
+    # Telegram Bot API — optional, publishing no-ops (skipped) if unset.
+    TELEGRAM_BOT_TOKEN: ${env:TELEGRAM_BOT_TOKEN, ''}
+    TELEGRAM_CHANNEL_ID: ${env:TELEGRAM_CHANNEL_ID, ''}
 
   ################################
   # ✅ IAM PERMISSIONS
@@ -76,6 +80,7 @@ provider:
           Resource:
             - !GetAtt NotificationFanoutQueue.Arn
             - !GetAtt NotificationEmailJobsQueue.Arn
+            - !GetAtt NotificationSocialQueue.Arn
         - Effect: Allow
           Action:
             - sqs:ReceiveMessage
@@ -85,6 +90,7 @@ provider:
           Resource:
             - !GetAtt NotificationFanoutQueue.Arn
             - !GetAtt NotificationEmailJobsQueue.Arn
+            - !GetAtt NotificationSocialQueue.Arn
 
   ################################
   # ✅ HTTP API + CORS + COGNITO
@@ -175,6 +181,20 @@ functions:
           maximumConcurrency: 5
           functionResponseType: ReportBatchItemFailures
 
+  # ─── Social Post Publisher ─────────────────────────────────────────────────
+  # approveNotification() (and the retry-social route) publish one event here
+  # per notification — a single Telegram API call, not a per-user fan-out, so
+  # unlike email this doesn't need a second "jobs" queue.
+  notificationSocialPublisher:
+    handler: dist/notification-delivery/notificationSocialLambda.handler
+    timeout: 30
+    memorySize: 256
+    description: "Publishes an approved notification to configured social channels (currently Telegram)"
+    events:
+      - sqs:
+          arn: !GetAtt NotificationSocialQueue.Arn
+          batchSize: 1
+
   # ─── Scraper Lambda ────────────────────────────────────────────────────────
   # Triggered by EventBridge every 4 hours.
   # Independently deployable from the Express API.
@@ -225,4 +245,20 @@ resources:
         MessageRetentionPeriod: 345600
         RedrivePolicy:
           deadLetterTargetArn: !GetAtt NotificationEmailJobsDLQ.Arn
+          maxReceiveCount: 5
+
+    NotificationSocialDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: applyindia-${self:provider.stage}-notification-social-dlq
+        MessageRetentionPeriod: 1209600
+
+    NotificationSocialQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: applyindia-${self:provider.stage}-notification-social
+        VisibilityTimeout: 180            # 6x the social publisher Lambda's 30s timeout
+        MessageRetentionPeriod: 345600
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt NotificationSocialDLQ.Arn
           maxReceiveCount: 5

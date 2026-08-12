@@ -73,6 +73,7 @@ export async function addCompleteNotification(data: INotification) {
       approved_at: null,
       review_status: "pending",
       send_email_notification: data?.send_email_notification ?? true,
+      send_telegram_notification: data?.send_telegram_notification ?? true,
       /**
        * ========================= GSI1 DESIGN =========================
        *
@@ -492,7 +493,8 @@ export async function editCompleteNotification(
       data.has_answer_key !== undefined ||
       data.has_result !== undefined ||
       data.has_syllabus !== undefined ||
-      data.send_email_notification !== undefined
+      data.send_email_notification !== undefined ||
+      data.send_telegram_notification !== undefined
     ) {
       // We must fetch existing meta to construct GSI Sort Keys safely
       const existingMetaArr = await fetchDynamoDB<INotification>(
@@ -515,6 +517,7 @@ export async function editCompleteNotification(
         ...(data.has_result !== undefined && { has_result: data.has_result }),
         ...(data.has_syllabus !== undefined && { has_syllabus: data.has_syllabus }),
         ...(data.send_email_notification !== undefined && { send_email_notification: data.send_email_notification }),
+        ...(data.send_telegram_notification !== undefined && { send_telegram_notification: data.send_telegram_notification }),
       };
 
       const finalCategory = data.category || existingMeta.category;
@@ -646,6 +649,23 @@ export async function approveNotification(
         );
       } catch (err) {
         logErrorLocation("notificationService.ts", "approveNotification (fanout publish)", err, "Failed to publish fan-out event", "", { id });
+      }
+    }
+
+    // Same fire-and-forget-but-awaited-SQS-publish pattern as the fan-out
+    // event above, on a separate queue since Telegram publishing is a single
+    // API call, not a per-user fan-out. Never throws — a failure here must
+    // never fail the approval itself.
+    if (QUEUE_CONFIG.notificationSocialQueueUrl) {
+      try {
+        await sqsClient.send(
+          new SendMessageCommand({
+            QueueUrl: QUEUE_CONFIG.notificationSocialQueueUrl,
+            MessageBody: JSON.stringify({ notificationId: id, platform: "telegram", mode: "initial" }),
+          })
+        );
+      } catch (err) {
+        logErrorLocation("notificationService.ts", "approveNotification (social publish)", err, "Failed to publish social-post event", "", { id });
       }
     }
 

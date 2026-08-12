@@ -43,6 +43,8 @@ export interface INotification {
   review_comments?: IReviewComment[];
   /** When true (the default), approving this notification triggers the email fan-out to eligible users. */
   send_email_notification?: boolean;
+  /** When true (the default), approving this notification triggers a Telegram channel post. */
+  send_telegram_notification?: boolean;
 
   /* Scraper */
   source_url?: string;   // canonical URL of the scraped listing page
