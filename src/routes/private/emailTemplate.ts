@@ -7,17 +7,9 @@ import {
   updateEmailTemplate,
   deleteEmailTemplate,
   renderEmailTemplate,
+  PREVIEW_SAMPLE_VARIABLES,
+  FULL_EMAIL_SAMPLE,
 } from "../../services/private/emailTemplateService";
-
-// Sample values used to render a preview — a real send substitutes actual
-// notification data, but for previewing a template's design these just
-// need to be representative, non-empty strings.
-const PREVIEW_SAMPLE_VARIABLES: Record<string, string> = {
-  title: "SSC CGL 2026 Recruitment — Combined Graduate Level Examination",
-  category: "job",
-  last_date_to_apply: "31 Dec 2026",
-  url: "https://applyindia.online/notification/ssc-cgl-2026/sample-id",
-};
 
 const router = Router();
 
@@ -34,6 +26,17 @@ router.get("/", requireRole("admin"), async (_req, res) => {
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || "Failed to fetch email templates" });
   }
+});
+
+/**
+ * GET /api/email-templates/sample-preview
+ * Renders the shared header/footer with sample body content (no DynamoDB
+ * lookup) — lets you check the overall theme (logo, colors, social icons)
+ * without needing any real template saved first. Placed before /:key so
+ * Express doesn't match "sample-preview" as a template key.
+ */
+router.get("/sample-preview", requireRole("admin"), (_req, res) => {
+  res.type("html").send(FULL_EMAIL_SAMPLE);
 });
 
 /**

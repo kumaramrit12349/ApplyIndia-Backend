@@ -2,15 +2,16 @@ import { Router } from "express";
 import { authenticateTokenAndEmail, requireRole } from "../../middlewares/authMiddleware";
 import { runScraper, getScraperEngine } from "../../scraper/scraperOrchestrator";
 import { ScraperRunSummary } from "../../scraper/types";
-import { 
-  getAllScraperConfigs, 
-  getScraperConfig, 
-  createScraperConfig, 
-  updateScraperConfig, 
+import {
+  getAllScraperConfigs,
+  getScraperConfig,
+  createScraperConfig,
+  updateScraperConfig,
   archiveScraperConfig,
   unarchiveScraperConfig,
   deleteScraperConfig,
-  bulkDeleteScraperConfigs
+  bulkDeleteScraperConfigs,
+  bulkUpdateActiveStatus
 } from "../../services/private/scraperConfigService";
 
 const router = Router();
@@ -123,6 +124,28 @@ router.post("/sources", requireRole("admin"), async (req, res) => {
       success: false, 
       error: error?.message || "Failed to create source" 
     });
+  }
+});
+
+/**
+ * PUT /api/scraper/sources/bulk-status
+ * Bulk activate/deactivate multiple source configurations.
+ * Body: { keys: string[], isActive: boolean }
+ * Placed before /sources/:key so Express doesn't match "bulk-status" as a key.
+ */
+router.put("/sources/bulk-status", requireRole("admin"), async (req, res) => {
+  try {
+    const { keys, isActive } = req.body || {};
+    if (!keys || !Array.isArray(keys) || keys.length === 0) {
+      return res.status(400).json({ success: false, error: "Missing or invalid 'keys' array in request body" });
+    }
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ success: false, error: "'isActive' must be a boolean" });
+    }
+    await bulkUpdateActiveStatus(keys, isActive);
+    res.json({ success: true, message: `${keys.length} sources ${isActive ? "activated" : "deactivated"}` });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error?.message || "Failed to bulk update source status" });
   }
 });
 

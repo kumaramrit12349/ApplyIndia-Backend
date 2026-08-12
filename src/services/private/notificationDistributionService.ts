@@ -65,3 +65,25 @@ export function matchesTopics(user: IUser, notification: INotification): boolean
   const topics = inferTopics(notification.title, notification.department);
   return topics.some((t) => user.subscribed_topics!.includes(t));
 }
+
+/** Capitalizes a hyphenated category slug for display, e.g. "admit-card" -> "Admit Card". Mirrors the frontend's formatCategoryTitle (src/utils/utils.ts). */
+export function formatCategoryTitle(category?: string): string {
+  return category?.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase()) || "";
+}
+
+/**
+ * Formats last_date_to_apply for display in emails. Some notifications store
+ * this as a raw epoch-ms string rather than a display string — detect and
+ * convert those; anything else (an already-readable date string) passes
+ * through unchanged.
+ */
+export function formatLastDateToApply(value?: string): string {
+  if (!value) return "Not specified";
+  if (/^\d+$/.test(value)) {
+    const date = new Date(Number(value));
+    if (!isNaN(date.getTime())) {
+      return date.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
+    }
+  }
+  return value;
+}

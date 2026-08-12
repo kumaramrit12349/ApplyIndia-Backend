@@ -156,20 +156,23 @@ functions:
           batchSize: 1
 
   # ─── Email Sender ──────────────────────────────────────────────────────────
-  # Sends one batch of email jobs via SES. reservedConcurrency caps how many
-  # of these can run at once, so SES's rate limits are respected without
-  # hand-rolled throttling logic.
+  # Sends one batch of email jobs via SES. maximumConcurrency (on the SQS
+  # trigger, not a function-level reservedConcurrency) caps how many of these
+  # run at once so SES's rate limits are respected, without reserving
+  # account-wide concurrency — reservedConcurrency would fail to deploy on
+  # accounts with a low total concurrency quota (e.g. free tier), since AWS
+  # requires at least 10 units to stay unreserved account-wide.
   notificationEmailSender:
     handler: dist/notification-delivery/notificationEmailSenderLambda.handler
     timeout: 30
     memorySize: 256
-    reservedConcurrency: 5
     description: "Sends a batch of email notification jobs via SES"
     events:
       - sqs:
           arn: !GetAtt NotificationEmailJobsQueue.Arn
           batchSize: 10
           maximumBatchingWindow: 5
+          maximumConcurrency: 5
           functionResponseType: ReportBatchItemFailures
 
   # ─── Scraper Lambda ────────────────────────────────────────────────────────

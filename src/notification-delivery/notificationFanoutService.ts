@@ -15,6 +15,8 @@ import {
   getNotificationId,
   buildNotificationUrl,
   matchesTopics,
+  formatCategoryTitle,
+  formatLastDateToApply,
 } from "../services/private/notificationDistributionService";
 import { renderEmailTemplate } from "../services/private/emailTemplateService";
 import { EMAIL_TEMPLATE_KEYS } from "../db_schema/EmailTemplate/EmailTemplateConstant";
@@ -166,6 +168,8 @@ export async function fanOutNotificationToEligibleUsers(notificationId: string, 
     logErrorLocation("notificationFanoutService.ts", "fanOutNotificationToEligibleUsers", new Error("Notification not found"), "", "", { notificationId });
     return;
   }
+  // Admin has explicitly opted this notification out of email distribution.
+  if (notification.send_email_notification === false) return;
 
   const notificationPk = TABLE_PK_MAPPER.Notification;
   const distributionSk = getDistributionSk(notification.sk);
@@ -176,8 +180,8 @@ export async function fanOutNotificationToEligibleUsers(notificationId: string, 
   const notificationUrl = buildNotificationUrl(notification.title, notificationId);
   const renderedEmail = await renderEmailTemplate(EMAIL_TEMPLATE_KEYS.NOTIFICATION_APPROVED, {
     title: notification.title,
-    category: notification.category,
-    last_date_to_apply: notification.last_date_to_apply,
+    category: formatCategoryTitle(notification.category),
+    last_date_to_apply: formatLastDateToApply(notification.last_date_to_apply),
     url: notificationUrl,
   });
   if (!renderedEmail) {

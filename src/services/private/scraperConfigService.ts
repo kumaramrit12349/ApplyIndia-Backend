@@ -163,3 +163,12 @@ export async function bulkDeleteScraperConfigs(keys: string[]): Promise<boolean>
   await Promise.all(keys.map(key => deleteScraperConfig(key)));
   return true;
 }
+
+/**
+ * Bulk activate/deactivate multiple scraper configs
+ */
+export async function bulkUpdateActiveStatus(keys: string[], isActive: boolean): Promise<boolean> {
+  if (!keys || keys.length === 0) return true;
+  await Promise.all(keys.map(key => updateScraperConfig(key, { isActive })));
+  return true;
+}
