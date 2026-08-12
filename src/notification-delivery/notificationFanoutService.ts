@@ -168,6 +168,8 @@ export async function fanOutNotificationToEligibleUsers(notificationId: string, 
     logErrorLocation("notificationFanoutService.ts", "fanOutNotificationToEligibleUsers", new Error("Notification not found"), "", "", { notificationId });
     return;
   }
+  // Admin has explicitly opted this notification out of email distribution.
+  if (notification.send_email_notification === false) return;
 
   const notificationPk = TABLE_PK_MAPPER.Notification;
   const distributionSk = getDistributionSk(notification.sk);

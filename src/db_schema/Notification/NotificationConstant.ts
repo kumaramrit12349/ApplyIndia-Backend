@@ -29,6 +29,7 @@ export const NOTIFICATION = {
   is_archived: "is_archived",
   review_status: "review_status",
   created_by: "created_by",
+  send_email_notification: "send_email_notification",
   source_url: "source_url",
   scraped_from: "scraped_from",
 
@@ -135,6 +136,7 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.approved_by,
   NOTIFICATION.review_status,
   NOTIFICATION.created_by,
+  NOTIFICATION.send_email_notification,
 
   NOTIFICATION.count_wishlisted,
   NOTIFICATION.count_applied,

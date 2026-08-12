@@ -72,6 +72,7 @@ export async function addCompleteNotification(data: INotification) {
       is_archived: false,
       approved_at: null,
       review_status: "pending",
+      send_email_notification: data?.send_email_notification ?? true,
       /**
        * ========================= GSI1 DESIGN =========================
        *
@@ -490,7 +491,8 @@ export async function editCompleteNotification(
       data.has_admit_card !== undefined ||
       data.has_answer_key !== undefined ||
       data.has_result !== undefined ||
-      data.has_syllabus !== undefined
+      data.has_syllabus !== undefined ||
+      data.send_email_notification !== undefined
     ) {
       // We must fetch existing meta to construct GSI Sort Keys safely
       const existingMetaArr = await fetchDynamoDB<INotification>(
@@ -512,6 +514,7 @@ export async function editCompleteNotification(
         ...(data.has_answer_key !== undefined && { has_answer_key: data.has_answer_key }),
         ...(data.has_result !== undefined && { has_result: data.has_result }),
         ...(data.has_syllabus !== undefined && { has_syllabus: data.has_syllabus }),
+        ...(data.send_email_notification !== undefined && { send_email_notification: data.send_email_notification }),
       };
 
       const finalCategory = data.category || existingMeta.category;

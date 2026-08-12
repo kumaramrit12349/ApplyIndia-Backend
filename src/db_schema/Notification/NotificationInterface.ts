@@ -41,6 +41,8 @@ export interface INotification {
   modified_at?: number;
   review_status?: 'pending' | 'changes_requested' | 'approved';
   review_comments?: IReviewComment[];
+  /** When true (the default), approving this notification triggers the email fan-out to eligible users. */
+  send_email_notification?: boolean;
 
   /* Scraper */
   source_url?: string;   // canonical URL of the scraped listing page
