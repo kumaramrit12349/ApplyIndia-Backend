@@ -30,6 +30,7 @@ export const NOTIFICATION = {
   review_status: "review_status",
   created_by: "created_by",
   send_email_notification: "send_email_notification",
+  send_telegram_notification: "send_telegram_notification",
   source_url: "source_url",
   scraped_from: "scraped_from",
 
@@ -137,6 +138,7 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.review_status,
   NOTIFICATION.created_by,
   NOTIFICATION.send_email_notification,
+  NOTIFICATION.send_telegram_notification,
 
   NOTIFICATION.count_wishlisted,
   NOTIFICATION.count_applied,

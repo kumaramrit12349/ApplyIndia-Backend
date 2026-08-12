@@ -24,6 +24,8 @@ import {
 import { IAdminPermissions } from "../../db_schema/User/UserInterface";
 import { getUserProfile, getCognitoUserEmail } from "../../services/authService";
 import { getDistributionLog, getNotificationId } from "../../services/private/notificationDistributionService";
+import { getSocialPostsForNotification } from "../../services/private/socialPostService";
+import { SOCIAL_PLATFORM } from "../../db_schema/SocialPost/SocialPostConstant";
 import { SendMessageCommand } from "@aws-sdk/client-sqs";
 import { sqsClient } from "../../aws/sqs.client";
 import { QUEUE_CONFIG } from "../../config/env";
@@ -354,6 +356,54 @@ router.post(
       res.json({ success: true, distribution: log });
     } catch (err) {
       res.status(500).json({ success: false, error: "Failed to retry distribution" });
+    }
+  }
+);
+
+// Get social publishing status for a notification — Reviewer, Senior Reviewer, Admin
+router.get(
+  "/:id/social-status",
+  requireRole("reviewer", "senior_reviewer", "admin"),
+  async (req, res) => {
+    try {
+      const notification = await getNotificationById(req.params.id);
+      if (!notification || !notification.sk) {
+        return res.status(404).json({ success: false, error: "Notification not found" });
+      }
+      const socialPosts = await getSocialPostsForNotification(getNotificationId(notification.sk));
+      res.json({ success: true, socialPosts });
+    } catch (err) {
+      res.status(500).json({ success: false, error: "Failed to fetch social publishing status" });
+    }
+  }
+);
+
+// Retry a failed social publication — Senior Reviewer, Admin
+router.post(
+  "/:id/retry-social/:platform",
+  requireRole("senior_reviewer", "admin"),
+  async (req, res) => {
+    try {
+      const { platform } = req.params;
+      if (!Object.values(SOCIAL_PLATFORM).includes(platform as any)) {
+        return res.status(400).json({ success: false, error: `Unknown platform: ${platform}` });
+      }
+      const notification = await getNotificationById(req.params.id);
+      if (!notification || !notification.sk) {
+        return res.status(404).json({ success: false, error: "Notification not found" });
+      }
+      if (QUEUE_CONFIG.notificationSocialQueueUrl) {
+        await sqsClient.send(
+          new SendMessageCommand({
+            QueueUrl: QUEUE_CONFIG.notificationSocialQueueUrl,
+            MessageBody: JSON.stringify({ notificationId: getNotificationId(notification.sk), platform, mode: "retry" }),
+          })
+        );
+      }
+      const socialPosts = await getSocialPostsForNotification(getNotificationId(notification.sk));
+      res.json({ success: true, socialPosts });
+    } catch (err) {
+      res.status(500).json({ success: false, error: "Failed to retry social publication" });
     }
   }
 );

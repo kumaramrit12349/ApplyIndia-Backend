@@ -49,6 +49,14 @@ export const EMAIL_CONFIG = {
 export const QUEUE_CONFIG = {
   notificationFanoutQueueUrl: process.env.NOTIFICATION_FANOUT_QUEUE_URL,
   notificationEmailJobsQueueUrl: process.env.NOTIFICATION_EMAIL_JOBS_QUEUE_URL,
+  notificationSocialQueueUrl: process.env.NOTIFICATION_SOCIAL_QUEUE_URL,
+};
+
+// Telegram Bot API — optional, same "no-op if unconfigured" convention as
+// EMAIL_CONFIG above.
+export const TELEGRAM_CONFIG = {
+  botToken: process.env.TELEGRAM_BOT_TOKEN,
+  channelId: process.env.TELEGRAM_CHANNEL_ID,
 };
 
 // ====== VALIDATION (VERY IMPORTANT) ======
