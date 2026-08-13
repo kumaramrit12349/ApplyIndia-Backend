@@ -117,7 +117,6 @@ async function createSocialPostIfAbsent(notificationId: string, platform: string
     return true;
   } catch (error: any) {
     if (error?.name === "ConditionalCheckFailedException") return false;
-    console.error("[socialPostService] createSocialPostIfAbsent failed", { notificationId, platform, sk, errorName: error?.name, errorMessage: error?.message });
     throw error;
   }
 }
@@ -160,41 +159,23 @@ export async function publishNotificationToTelegram(notificationId: string, mode
   const platform = SOCIAL_PLATFORM.TELEGRAM;
   const notification = await getNotificationById(notificationId);
   if (!notification || !notification.sk) {
-    console.warn("[socialPostService] Bailing: notification not found", { notificationId });
     logErrorLocation("socialPostService.ts", "publishNotificationToTelegram", new Error("Notification not found"), "", "", { notificationId });
     return;
   }
   // Guards a race where the notification was archived/unapproved between
   // enqueue and this Lambda picking up the message.
-  if (notification.review_status !== "approved" || notification.is_archived) {
-    console.warn("[socialPostService] Bailing: not approved or archived", {
-      notificationId,
-      review_status: notification.review_status,
-      is_archived: notification.is_archived,
-    });
-    return;
-  }
+  if (notification.review_status !== "approved" || notification.is_archived) return;
   // Admin has explicitly opted this notification out of Telegram publishing.
-  if (notification.send_telegram_notification === false) {
-    console.warn("[socialPostService] Bailing: send_telegram_notification is false", { notificationId });
-    return;
-  }
+  if (notification.send_telegram_notification === false) return;
 
   if (mode === "initial") {
     const content = buildTelegramMessage(notification);
-    console.log("[socialPostService] Creating SocialPost record", { notificationId, platform });
     const created = await createSocialPostIfAbsent(notificationId, platform, content);
-    if (!created) {
-      console.warn("[socialPostService] Bailing: SocialPost already exists (duplicate processing)", { notificationId, platform });
-      return;
-    }
+    if (!created) return; // already processed — the idempotency guard
     await publishAndFinalize(notificationId, platform, content);
   } else {
     const existing = (await getSocialPostsForNotification(notificationId)).find((p) => p.platform === platform);
-    if (!existing || existing.status !== "failed") {
-      console.warn("[socialPostService] Bailing: nothing to retry", { notificationId, platform, existingStatus: existing?.status });
-      return;
-    }
+    if (!existing || existing.status !== "failed") return; // nothing to retry
     const sk = getSocialPostSk(notificationId, platform);
     await updateDynamoDB(TABLE_PK_MAPPER.SocialPost, sk, {
       status: "pending",
@@ -206,7 +187,6 @@ export async function publishNotificationToTelegram(notificationId: string, mode
 
 async function publishAndFinalize(notificationId: string, platform: string, content: string): Promise<void> {
   const result = await sendTelegramMessage(content);
-  console.log("[socialPostService] Telegram send result", { notificationId, platform, success: result.success, skipped: result.skipped, error: result.error });
   if (result.success && result.id) {
     await markSocialPostPublished(notificationId, platform, result.id);
   } else {
