@@ -647,9 +647,13 @@ export async function approveNotification(
             MessageBody: JSON.stringify({ notificationId: id, mode: "initial" }),
           })
         );
+        console.log("[approveNotification] Fan-out SQS message sent", { id, queueUrl: QUEUE_CONFIG.notificationFanoutQueueUrl });
       } catch (err) {
+        console.error("[approveNotification] Fan-out SQS send threw", { id, queueUrl: QUEUE_CONFIG.notificationFanoutQueueUrl, err });
         logErrorLocation("notificationService.ts", "approveNotification (fanout publish)", err, "Failed to publish fan-out event", "", { id });
       }
+    } else {
+      console.warn("[approveNotification] Skipping fan-out: notificationFanoutQueueUrl is not set", { id });
     }
 
     // Same fire-and-forget-but-awaited-SQS-publish pattern as the fan-out
