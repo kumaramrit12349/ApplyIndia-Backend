@@ -36,6 +36,11 @@ router.get("/", requireRole("admin"), async (_req, res) => {
  * Express doesn't match "sample-preview" as a template key.
  */
 router.get("/sample-preview", requireRole("admin"), (_req, res) => {
+  // This is a full standalone HTML document meant to be opened directly in a
+  // browser tab, not part of the SPA — helmet's default CSP (img-src 'self'
+  // data:) would otherwise block the hosted logo image, since it's served
+  // from a different origin than this API.
+  res.removeHeader("Content-Security-Policy");
   res.type("html").send(FULL_EMAIL_SAMPLE);
 });
 
@@ -61,6 +66,9 @@ router.get("/:key", requireRole("admin"), async (req, res) => {
  * directly in a browser tab to see exactly what the real email looks like.
  */
 router.get("/:key/preview", requireRole("admin"), async (req, res) => {
+  // Same reasoning as /sample-preview above — a standalone HTML document,
+  // not part of the SPA, so the SPA's CSP shouldn't restrict its images.
+  res.removeHeader("Content-Security-Policy");
   try {
     const rendered = await renderEmailTemplate(req.params.key, PREVIEW_SAMPLE_VARIABLES);
     if (!rendered) {
