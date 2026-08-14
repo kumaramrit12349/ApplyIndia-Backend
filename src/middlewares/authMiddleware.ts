@@ -333,15 +333,40 @@ export const requireRole = (...allowedRoles: AdminRole[]) => {
  * Must be used AFTER authenticateTokenAndEmail.
  */
 export const checkNotificationPermission = () => {
-  return (req: any, res: any, next: any) => {
+  return async (req: any, res: any, next: any) => {
     const permissions: IAdminPermissions | null = req.adminPermissions;
     const role: AdminRole | undefined = req.adminRole;
 
     // Admin role = unrestricted
     if (role === "admin") return next();
 
-    const category = req.body?.category;
-    const state = req.body?.state;
+    let category = req.body?.category;
+    let state = req.body?.state;
+
+    // Edit payloads are partial (Partial<INotification>), so category/state
+    // are frequently absent from req.body — trusting only the body let a
+    // scoped user edit a notification outside their permitted category/state
+    // simply by omitting those fields. For edit routes (an :id param is
+    // present), check permissions against the notification's actual stored
+    // category/state, not just whatever (if anything) the request claims.
+    if (req.params?.id) {
+      try {
+        const existing = await getNotificationById(req.params.id);
+        if (existing) {
+          if (!permissionsAllowNotification(permissions, existing.category, existing.state)) {
+            return res.status(403).json({
+              error: "Access denied. You don't have permission for this category/state.",
+            });
+          }
+          // Also validate any NEW category/state the request is trying to move
+          // the notification into, defaulting to the current values when unset.
+          category = category ?? existing.category;
+          state = state ?? existing.state;
+        }
+      } catch (err) {
+        return res.status(500).json({ error: "Failed to verify notification permissions" });
+      }
+    }
 
     if (!permissionsAllowNotification(permissions, category, state)) {
       return res.status(403).json({

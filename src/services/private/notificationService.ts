@@ -29,12 +29,69 @@ import { SendMessageCommand } from "@aws-sdk/client-sqs";
 import { sqsClient } from "../../aws/sqs.client";
 import { QUEUE_CONFIG } from "../../config/env";
 
+const URL_FIELDS = [
+  "youtube_link",
+  "apply_online_url",
+  "notification_pdf_url",
+  "official_website_url",
+  "admit_card_url",
+  "answer_key_url",
+  "result_url",
+] as const;
+const URL_REGEX = /^https?:\/\/.+/i;
+
+/**
+ * Rejects obviously-bad numeric/URL values before they're persisted —
+ * negative vacancy counts/fees/ages, or a links.* field that isn't even a
+ * well-formed http(s) URL. `other_links` is deliberately excluded: it's
+ * used as free text (can hold multiple links or prose), not a single URL.
+ */
+function validateNotificationFields(data: Partial<INotification>): void {
+  if (data.total_vacancies !== undefined && data.total_vacancies !== null) {
+    if (typeof data.total_vacancies !== "number" || !Number.isFinite(data.total_vacancies) || data.total_vacancies < 0) {
+      throw new Error("total_vacancies must be a non-negative number");
+    }
+  }
+
+  if (data.fee) {
+    for (const [key, value] of Object.entries(data.fee)) {
+      if (value === undefined || value === null) continue;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new Error(`fee.${key} must be a non-negative number`);
+      }
+    }
+  }
+
+  if (data.eligibility) {
+    const { min_age, max_age, min_percentage } = data.eligibility;
+    for (const [key, value] of Object.entries({ min_age, max_age, min_percentage })) {
+      if (value === undefined || value === null) continue;
+      if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+        throw new Error(`eligibility.${key} must be a non-negative number`);
+      }
+    }
+    if (min_age !== undefined && max_age !== undefined && min_age !== null && max_age !== null && min_age > max_age) {
+      throw new Error("eligibility.min_age cannot be greater than eligibility.max_age");
+    }
+  }
+
+  if (data.links) {
+    for (const field of URL_FIELDS) {
+      const value = data.links[field];
+      if (typeof value === "string" && value.trim() !== "" && !URL_REGEX.test(value.trim())) {
+        throw new Error(`links.${field} must be a valid http(s) URL`);
+      }
+    }
+  }
+}
+
 // Add complete notification with all related tables
 export async function addCompleteNotification(data: INotification) {
   try {
     if (!data.title || !data.category || !data.state || !data.start_date) {
       throw new Error("Missing required notification fields");
     }
+    validateNotificationFields(data);
     const notificationId = generateId();
     const now = Date.now();
     const pk = TABLE_PK_MAPPER.Notification;
@@ -475,6 +532,7 @@ export async function editCompleteNotification(
     if (!id || !data) {
       throw new Error(INVALID_INPUT);
     }
+    validateNotificationFields(data);
     const pk = TABLE_PK_MAPPER.Notification;
     const notificationSk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
     const updates: Promise<any>[] = [];
@@ -530,7 +588,14 @@ export async function editCompleteNotification(
       const paddedLastDate = String(newEpochLastDate ?? 0).padStart(15, "0");
       const originalCreatedAt = existingMeta.created_at || Date.now();
 
-      if (data.last_date_to_apply !== undefined) {
+      // Only write last_date_to_apply when it actually parsed to a valid epoch —
+      // toEpoch("") (e.g. an attempt to clear the field) returns undefined, and
+      // explicitly setting a DynamoDB attribute to undefined throws a
+      // ValidationException (the key still lands in the UpdateExpression while
+      // its value is stripped from ExpressionAttributeValues). Silently skipping
+      // the write here means an invalid/blank value leaves the field unchanged,
+      // matching the truthy-guard behavior already used for exam_date/start_date.
+      if (newEpochLastDate !== undefined && data.last_date_to_apply !== undefined) {
         updatePayload.last_date_to_apply = newEpochLastDate;
       }
 

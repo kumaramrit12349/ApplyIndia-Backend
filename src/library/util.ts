@@ -12,6 +12,7 @@ export function buildNotificationDetail(items: any[]): any {
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.META}`)) {
       Object.assign(result, {
         sk: item.sk,
+        type: item.type,
         title: item.title,
         state: item.state,
         category: item.category,
@@ -20,10 +21,18 @@ export function buildNotificationDetail(items: any[]): any {
         start_date: item.start_date,
         last_date_to_apply: item.last_date_to_apply,
         exam_date: item.exam_date,
+        admit_card_date: item.admit_card_date,
+        result_date: item.result_date,
         has_syllabus: item?.has_syllabus,
         has_admit_card: item?.has_admit_card,
         has_result: item?.has_result,
         has_answer_key: item?.has_answer_key,
+        is_archived: item.is_archived,
+        review_status: item.review_status,
+        source_url: item.source_url,
+        scraped_from: item.scraped_from,
+        send_email_notification: item.send_email_notification,
+        send_telegram_notification: item.send_telegram_notification,
         created_at: item.created_at,
         modified_at: item.modified_at,
         approved_at: item.approved_at,
@@ -49,6 +58,7 @@ export function buildNotificationDetail(items: any[]): any {
         qualification: item.qualification,
         specialization: item.specialization,
         min_percentage: item.min_percentage,
+        qualification_details: item.qualification_details,
       };
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.FEE}`)) {
