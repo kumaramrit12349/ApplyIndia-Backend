@@ -173,9 +173,15 @@ export async function fanOutNotificationToEligibleUsers(notificationId: string, 
 
   const notificationPk = TABLE_PK_MAPPER.Notification;
   const distributionSk = getDistributionSk(notification.sk);
-  const existingLog = mode === "retry" ? await getDistributionLog(notification.sk) : null;
+  const existingLog = await getDistributionLog(notification.sk);
   if (mode === "retry" && existingLog?.email?.status !== "failed") return;
-  if (mode === "initial" && existingLog?.email?.status === "sent") return;
+  // Block on "pending" as well as "sent" — status is flipped to "pending"
+  // before enumeration starts (below) and only reaches "sent"/"failed" once
+  // it finishes. Without this, an SQS redelivery of the same "initial"
+  // message after a Lambda timeout/crash mid-enumeration would see
+  // "pending" (not yet "sent") and restart paging from scratch, re-enqueueing
+  // duplicate email jobs for every user already processed before the crash.
+  if (mode === "initial" && (existingLog?.email?.status === "sent" || existingLog?.email?.status === "pending")) return;
 
   const notificationUrl = buildNotificationUrl(notification.title, notificationId);
   const renderedEmail = await renderEmailTemplate(EMAIL_TEMPLATE_KEYS.NOTIFICATION_APPROVED, {
@@ -192,6 +198,16 @@ export async function fanOutNotificationToEligibleUsers(notificationId: string, 
   await updateDynamoDB(notificationPk, distributionSk, {
     email: { status: "pending", sent_count: 0, failed_count: 0, skipped_count: 0, last_attempt_at: Date.now() },
   });
-  const totalEligible = await enqueueEmailDeliveryJobs(notificationPk, distributionSk, notification, renderedEmail);
-  await setDistributionTotalCount(notificationPk, distributionSk, "email", totalEligible);
+  // Enumeration is now wrapped: since "pending" blocks any further "initial"
+  // re-entry (above), a crash/timeout partway through must still leave the
+  // record in a *recoverable* state — otherwise it would be stuck at
+  // "pending" forever with no path back to "failed" (the only status the
+  // "retry" mode above will act on).
+  try {
+    const totalEligible = await enqueueEmailDeliveryJobs(notificationPk, distributionSk, notification, renderedEmail);
+    await setDistributionTotalCount(notificationPk, distributionSk, "email", totalEligible);
+  } catch (err) {
+    await markEmailDeliveryFailed(notificationPk, distributionSk, err instanceof Error ? err.message : String(err));
+    throw err;
+  }
 }

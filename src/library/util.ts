@@ -58,6 +58,7 @@ export function buildNotificationDetail(items: any[]): any {
         qualification: item.qualification,
         specialization: item.specialization,
         min_percentage: item.min_percentage,
+        qualification_details: item.qualification_details,
       };
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.FEE}`)) {
