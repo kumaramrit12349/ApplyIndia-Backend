@@ -56,6 +56,18 @@ export interface INotification {
   count_admit_card?: number;
   count_result?: number;
   count_selected?: number;
+
+  /* Content tracking — per-notification daily video, and a weekly roundup
+   * video that can cover several notifications (see weekly_video_batch_id). */
+  daily_video_done?: boolean;
+  daily_video_url?: string | null;
+  daily_video_marked_by?: string | null;
+  daily_video_marked_at?: number | null;
+  weekly_video_done?: boolean;
+  weekly_video_url?: string | null;
+  weekly_video_marked_by?: string | null;
+  weekly_video_marked_at?: number | null;
+  weekly_video_batch_id?: string | null;
 }
 
 export interface INotificationDetails {
@@ -103,6 +115,15 @@ export interface INotificationListItem {
   approved_by: string;
   is_archived: boolean;
   review_status?: 'pending' | 'changes_requested' | 'approved';
+  daily_video_done?: boolean;
+  daily_video_url?: string | null;
+  daily_video_marked_by?: string | null;
+  daily_video_marked_at?: number | null;
+  weekly_video_done?: boolean;
+  weekly_video_url?: string | null;
+  weekly_video_marked_by?: string | null;
+  weekly_video_marked_at?: number | null;
+  weekly_video_batch_id?: string | null;
 }
 
 export type INotificationItem =

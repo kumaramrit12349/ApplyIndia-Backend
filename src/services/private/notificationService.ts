@@ -126,6 +126,8 @@ export async function addCompleteNotification(data: INotification) {
       has_admit_card: data?.has_admit_card ?? false,
       has_result: data?.has_result ?? false,
       has_answer_key: data?.has_answer_key ?? false,
+      daily_video_done: false,
+      weekly_video_done: false,
       is_archived: false,
       approved_at: null,
       review_status: "pending",
@@ -256,6 +258,10 @@ export async function viewNotifications(
   timeRange?: string,
   category?: string,
   state?: string,
+  dailyVideoDone?: boolean,
+  weeklyVideoDone?: boolean,
+  openOnly?: boolean,
+  closingSoon?: boolean,
 ): Promise<INotificationListItem[]> {
   try {
     // Build filter expressions
@@ -308,6 +314,60 @@ export async function viewNotifications(
       queryFilter["state"] = state;
     }
 
+    // Tri-state: undefined = no filter. Older notifications predate these
+    // fields, so "not done" must also match items where the attribute is
+    // simply missing, not just items explicitly set to false.
+    //
+    // NOTE: the name-carrier entry below (queryFilter["daily_video_done"] =
+    // "daily_video_done") only exists to make fetchDynamoDB emit the
+    // #daily_video_done name placeholder; its paired :daily_video_done value
+    // placeholder is unused and relies on fetchDynamoDB's cleanup pass
+    // (`!filterString.includes(key)`) to get pruned before the DynamoDB call.
+    // That check is a plain substring match, so the true/false value
+    // placeholder names below must NOT start with "daily_video_done"/
+    // "weekly_video_done" (e.g. "daily_video_done_true" would still contain
+    // ":daily_video_done" as a prefix and survive pruning, and DynamoDB
+    // rejects any ExpressionAttributeValue not referenced verbatim in the
+    // expression) — hence the unrelated camelCase names here.
+    if (dailyVideoDone !== undefined) {
+      queryFilter["daily_video_done"] = "daily_video_done";
+      if (dailyVideoDone) {
+        filterString += " AND #daily_video_done = :dailyVideoDoneTrue";
+        queryFilter["dailyVideoDoneTrue"] = true;
+      } else {
+        filterString += " AND (attribute_not_exists(#daily_video_done) OR #daily_video_done = :dailyVideoDoneFalse)";
+        queryFilter["dailyVideoDoneFalse"] = false;
+      }
+    }
+
+    if (weeklyVideoDone !== undefined) {
+      queryFilter["weekly_video_done"] = "weekly_video_done";
+      if (weeklyVideoDone) {
+        filterString += " AND #weekly_video_done = :weeklyVideoDoneTrue";
+        queryFilter["weeklyVideoDoneTrue"] = true;
+      } else {
+        filterString += " AND (attribute_not_exists(#weekly_video_done) OR #weekly_video_done = :weeklyVideoDoneFalse)";
+        queryFilter["weeklyVideoDoneFalse"] = false;
+      }
+    }
+
+    // "Open" = last date to apply hasn't passed yet. Missing the field entirely
+    // is treated as not-open (excluded), since openness can't be determined.
+    if (openOnly) {
+      queryFilter["last_date_to_apply"] = "last_date_to_apply";
+      filterString += " AND #last_date_to_apply >= :openOnlyNow";
+      queryFilter["openOnlyNow"] = Date.now();
+    }
+
+    // "Closing soon" = last date to apply falls within the next 2 days.
+    if (closingSoon) {
+      const now = Date.now();
+      queryFilter["last_date_to_apply"] = "last_date_to_apply";
+      filterString += " AND #last_date_to_apply BETWEEN :closingSoonNow AND :closingSoonUntil";
+      queryFilter["closingSoonNow"] = now;
+      queryFilter["closingSoonUntil"] = now + 2 * 24 * 60 * 60 * 1000;
+    }
+
     let notifications = await fetchDynamoDB<INotificationListItem>(
       ALL_TABLE_NAMES.Notification,
       undefined,
@@ -323,6 +383,15 @@ export async function viewNotifications(
         NOTIFICATION.type,
         NOTIFICATION.is_archived,
         NOTIFICATION.review_status,
+        NOTIFICATION.daily_video_done,
+        NOTIFICATION.daily_video_url,
+        NOTIFICATION.daily_video_marked_by,
+        NOTIFICATION.daily_video_marked_at,
+        NOTIFICATION.weekly_video_done,
+        NOTIFICATION.weekly_video_url,
+        NOTIFICATION.weekly_video_marked_by,
+        NOTIFICATION.weekly_video_marked_at,
+        NOTIFICATION.weekly_video_batch_id,
       ],
       queryFilter,
       filterString,
@@ -743,6 +812,102 @@ export async function approveNotification(
       "DB error while approving notification (DynamoDB)",
       "",
       { id, approvedBy },
+    );
+    throw error;
+  }
+}
+
+// Mark (or unmark) a single notification's daily video as done
+export async function markDailyVideo(
+  id: string,
+  done: boolean,
+  videoUrl: string | undefined,
+  markedBy: string,
+): Promise<Pick<INotification, "daily_video_done" | "daily_video_url" | "daily_video_marked_by" | "daily_video_marked_at">> {
+  try {
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
+    const existingArr = await fetchDynamoDB<INotification>(ALL_TABLE_NAMES.Notification, sk);
+    const existing = existingArr[0];
+    if (!existing) {
+      throw new Error("Notification not found");
+    }
+    if (!existing.approved_at) {
+      throw new Error("Only approved notifications can have their video status marked");
+    }
+    const attributesToUpdate = done
+      ? {
+          daily_video_done: true,
+          daily_video_url: videoUrl || null,
+          daily_video_marked_by: markedBy,
+          daily_video_marked_at: Date.now(),
+        }
+      : {
+          daily_video_done: false,
+          daily_video_url: null,
+          daily_video_marked_by: null,
+          daily_video_marked_at: null,
+        };
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+    return attributesToUpdate;
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "markDailyVideo",
+      error,
+      "DB error while marking daily video status",
+      "",
+      { id, done },
+    );
+    throw error;
+  }
+}
+
+/**
+ * Marks (or unmarks) several notifications as covered by the same weekly
+ * roundup video in one shot, tagging them all with a shared batch id so the
+ * set of notifications behind one weekly video can be identified later.
+ */
+export async function markWeeklyVideoBulk(
+  ids: string[],
+  done: boolean,
+  videoUrl: string | undefined,
+  markedBy: string,
+): Promise<{ batch_id?: string }> {
+  if (!ids || ids.length === 0) return {};
+  try {
+    const pk = TABLE_PK_MAPPER.Notification;
+    const batchId = done ? generateId() : undefined;
+    const attributesToUpdate = done
+      ? {
+          weekly_video_done: true,
+          weekly_video_url: videoUrl || null,
+          weekly_video_marked_by: markedBy,
+          weekly_video_marked_at: Date.now(),
+          weekly_video_batch_id: batchId,
+        }
+      : {
+          weekly_video_done: false,
+          weekly_video_url: null,
+          weekly_video_marked_by: null,
+          weekly_video_marked_at: null,
+          weekly_video_batch_id: null,
+        };
+    await Promise.all(
+      ids.map((id) => updateDynamoDB(pk, `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`, attributesToUpdate)),
+    );
+    return { batch_id: batchId };
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "markWeeklyVideoBulk",
+      error,
+      "DB error while bulk marking weekly video status",
+      "",
+      { ids, done },
     );
     throw error;
   }
