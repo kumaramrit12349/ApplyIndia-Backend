@@ -681,6 +681,7 @@ export interface IOpenNotificationFilters {
   department?: string;
   minVacancies?: number;
   search?: string;
+  closingSoon?: boolean;
   sortBy?: "last_date_to_apply" | "created_at";
   sortOrder?: "asc" | "desc";
   limit?: number;
@@ -762,6 +763,14 @@ export async function getOpenNotifications(
     if (filters.search && filters.search.trim()) {
       const search = filters.search.trim().toLowerCase();
       filtered = filtered.filter((n) => n.title?.toLowerCase().includes(search));
+    }
+    // "Closing soon" = last date to apply falls within the next 2 days —
+    // same threshold as the admin dashboard's closingSoon filter.
+    if (filters.closingSoon) {
+      const closingSoonUntil = now + 2 * 24 * 60 * 60 * 1000;
+      filtered = filtered.filter(
+        (n) => (n.last_date_to_apply as unknown as number) <= closingSoonUntil,
+      );
     }
 
     const sortBy = filters.sortBy === "created_at" ? "created_at" : "last_date_to_apply";

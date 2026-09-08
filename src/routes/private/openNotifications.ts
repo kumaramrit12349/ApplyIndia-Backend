@@ -15,13 +15,14 @@ router.use(authenticateToken);
  */
 router.get("/", async (req, res) => {
   try {
-    const { category, state, department, minVacancies, search, sortBy, sortOrder, limit, offset } = req.query;
+    const { category, state, department, minVacancies, search, closingSoon, sortBy, sortOrder, limit, offset } = req.query;
     const result = await getOpenNotifications({
       category: typeof category === "string" ? category : undefined,
       state: typeof state === "string" ? state : undefined,
       department: typeof department === "string" ? department : undefined,
       minVacancies: minVacancies ? Number(minVacancies) : undefined,
       search: typeof search === "string" ? search : undefined,
+      closingSoon: closingSoon === "true",
       sortBy: sortBy === "created_at" ? "created_at" : "last_date_to_apply",
       sortOrder: sortOrder === "desc" ? "desc" : "asc",
       limit: limit ? Number(limit) : undefined,
