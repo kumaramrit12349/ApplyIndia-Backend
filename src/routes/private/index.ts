@@ -7,6 +7,7 @@ import adminRoleRoutes from "./adminRole"
 import eligibilityRoutes from "./eligibility"
 import emailTemplateRoutes from "./emailTemplate"
 import usersRoutes from "./users"
+import openNotificationsRoutes from "./openNotifications"
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use("/admin-roles", adminRoleRoutes);
 router.use("/eligibility", eligibilityRoutes);
 router.use("/email-templates", emailTemplateRoutes);
 router.use("/users", usersRoutes);
+router.use("/open-notifications", openNotificationsRoutes);
 
 export default router;

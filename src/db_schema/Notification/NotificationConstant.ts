@@ -40,6 +40,16 @@ export const NOTIFICATION = {
   count_result: "count_result",
   count_selected: "count_selected",
 
+  daily_video_done: "daily_video_done",
+  daily_video_url: "daily_video_url",
+  daily_video_marked_by: "daily_video_marked_by",
+  daily_video_marked_at: "daily_video_marked_at",
+  weekly_video_done: "weekly_video_done",
+  weekly_video_url: "weekly_video_url",
+  weekly_video_marked_by: "weekly_video_marked_by",
+  weekly_video_marked_at: "weekly_video_marked_at",
+  weekly_video_batch_id: "weekly_video_batch_id",
+
   comment: {
     comment_id: "comment_id",
     reviewer_sub: "reviewer_sub",
@@ -145,6 +155,16 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.count_admit_card,
   NOTIFICATION.count_result,
   NOTIFICATION.count_selected,
+
+  NOTIFICATION.daily_video_done,
+  NOTIFICATION.daily_video_url,
+  NOTIFICATION.daily_video_marked_by,
+  NOTIFICATION.daily_video_marked_at,
+  NOTIFICATION.weekly_video_done,
+  NOTIFICATION.weekly_video_url,
+  NOTIFICATION.weekly_video_marked_by,
+  NOTIFICATION.weekly_video_marked_at,
+  NOTIFICATION.weekly_video_batch_id,
 ];
 
 export const HOME_PAGE_NOTIFICATION = [

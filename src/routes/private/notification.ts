@@ -8,6 +8,8 @@ import {
   editCompleteNotification,
   getNotificationById,
   getReviewComments,
+  markDailyVideo,
+  markWeeklyVideoBulk,
   unarchiveNotification,
   viewNotifications,
   bulkPermanentDeleteNotifications,
@@ -88,8 +90,17 @@ router.post("/add", requireRole("creator", "senior_reviewer", "admin"), checkNot
 // View all notifications — All roles (filtered by permissions)
 router.post("/view", async (req: any, res) => {
   try {
-    const { search, timeRange, category, state } = req.body || {};
-    let notifications = await viewNotifications(search, timeRange, category, state);
+    const { search, timeRange, category, state, dailyVideoDone, weeklyVideoDone, openOnly, closingSoon } = req.body || {};
+    let notifications = await viewNotifications(
+      search,
+      timeRange,
+      category,
+      state,
+      typeof dailyVideoDone === "boolean" ? dailyVideoDone : undefined,
+      typeof weeklyVideoDone === "boolean" ? weeklyVideoDone : undefined,
+      typeof openOnly === "boolean" ? openOnly : undefined,
+      typeof closingSoon === "boolean" ? closingSoon : undefined,
+    );
 
     // Apply permission-based filtering for non-admin roles
     const role = req.adminRole;
@@ -282,6 +293,136 @@ router.get("/comments/:id", async (req, res) => {
   }
 });
 
+
+// Mark (or unmark) a single notification's daily video — Reviewer, Senior Reviewer, Admin (scoped by permissions)
+router.patch(
+  "/:id/daily-video",
+  requireRole("reviewer", "senior_reviewer", "admin"),
+  checkNotificationPermission(),
+  async (req: any, res) => {
+    try {
+      const { done, video_url } = req.body || {};
+      if (typeof done !== "boolean") {
+        return res.status(400).json({ success: false, error: "'done' (boolean) is required" });
+      }
+      const markedBy = await getDisplayName(req);
+      const result = await markDailyVideo(req.params.id, done, video_url, markedBy);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      res.status(500).json({ success: false, error: "Failed to update daily video status" });
+    }
+  }
+);
+
+// Mark (or unmark) several notifications' daily video in one shot — Reviewer,
+// Senior Reviewer, Admin. Reuses markDailyVideo per notification (so the
+// approved-only rule is enforced the same way as the single-item route),
+// collecting individual failures instead of aborting the whole batch on the
+// first one so a partially-mixed selection still updates what it can.
+router.patch(
+  "/daily-video/bulk",
+  requireRole("reviewer", "senior_reviewer", "admin"),
+  async (req: any, res) => {
+    try {
+      const { ids, done, video_url } = req.body || {};
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ success: false, error: "IDs array is required" });
+      }
+      if (typeof done !== "boolean") {
+        return res.status(400).json({ success: false, error: "'done' (boolean) is required" });
+      }
+
+      const role = req.adminRole;
+      const permissions: IAdminPermissions | null = req.adminPermissions;
+      if (role !== "admin" && permissions) {
+        const notifications = await Promise.all(ids.map((id: string) => getNotificationById(id)));
+        const disallowed = ids.filter((id: string, idx: number) => {
+          const n = notifications[idx];
+          return !n || !permissionsAllowNotification(permissions, n.category, n.state);
+        });
+        if (disallowed.length > 0) {
+          return res.status(403).json({
+            success: false,
+            error: "Access denied for one or more notifications",
+            ids: disallowed,
+          });
+        }
+      }
+
+      const markedBy = await getDisplayName(req);
+      const results = await Promise.allSettled(
+        ids.map((id: string) => markDailyVideo(id, done, video_url, markedBy)),
+      );
+      const failed = ids.filter((_id: string, idx: number) => results[idx].status === "rejected");
+      if (failed.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Some notifications could not be updated (they may not be approved)",
+          ids: failed,
+        });
+      }
+      res.json({ success: true, count: ids.length });
+    } catch (error) {
+      console.error("Error bulk marking daily video:", error);
+      res.status(500).json({ success: false, error: "Failed to update daily video status" });
+    }
+  }
+);
+
+// Mark (or unmark) several notifications as covered by one weekly roundup video —
+// Reviewer, Senior Reviewer, Admin. Unlike bulk-archive/bulk-delete (role-only —
+// admin/senior-reviewer teardown actions), this is a routine action scoped
+// users perform often, so each notification's category/state is checked
+// against the caller's permissions individually rather than trusting the role alone.
+router.patch(
+  "/weekly-video/bulk",
+  requireRole("reviewer", "senior_reviewer", "admin"),
+  async (req: any, res) => {
+    try {
+      const { ids, done, video_url } = req.body || {};
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ success: false, error: "IDs array is required" });
+      }
+      if (typeof done !== "boolean") {
+        return res.status(400).json({ success: false, error: "'done' (boolean) is required" });
+      }
+
+      const notifications = await Promise.all(ids.map((id: string) => getNotificationById(id)));
+
+      const notApproved = ids.filter((id: string, idx: number) => !notifications[idx]?.approved_at);
+      if (notApproved.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: "Only approved notifications can have their video status marked",
+          ids: notApproved,
+        });
+      }
+
+      const role = req.adminRole;
+      const permissions: IAdminPermissions | null = req.adminPermissions;
+      if (role !== "admin" && permissions) {
+        const disallowed = ids.filter((id: string, idx: number) => {
+          const n = notifications[idx];
+          return !n || !permissionsAllowNotification(permissions, n.category, n.state);
+        });
+        if (disallowed.length > 0) {
+          return res.status(403).json({
+            success: false,
+            error: "Access denied for one or more notifications",
+            ids: disallowed,
+          });
+        }
+      }
+
+      const markedBy = await getDisplayName(req);
+      const result = await markWeeklyVideoBulk(ids, done, video_url, markedBy);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      console.error("Error bulk marking weekly video:", error);
+      res.status(500).json({ success: false, error: "Failed to update weekly video status" });
+    }
+  }
+);
 
 // Bulk permanent delete — Admin only
 router.delete("/bulk-permanent-delete", requireRole("admin"), async (req, res) => {

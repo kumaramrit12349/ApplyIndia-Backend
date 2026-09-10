@@ -623,13 +623,13 @@ export async function getLatestNotifications(): Promise<
   }
 }
 
-// Fetch available states that have at least one approved notification
-export async function getAvailableFilters(): Promise<{ states: string[] }> {
+// Fetch available states/categories/departments that have at least one approved notification
+export async function getAvailableFilters(): Promise<{ states: string[]; categories: string[]; departments: string[] }> {
   try {
     const items = await fetchDynamoDB<INotification>(
       ALL_TABLE_NAMES.Notification,
       undefined,
-      [NOTIFICATION.state, NOTIFICATION.approved_at, NOTIFICATION.type],
+      [NOTIFICATION.state, NOTIFICATION.category, NOTIFICATION.department, NOTIFICATION.approved_at, NOTIFICATION.type],
       {
         [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
       },
@@ -641,15 +641,27 @@ export async function getAvailableFilters(): Promise<{ states: string[] }> {
     // Keep only approved ones
     const approved = items.filter((n) => typeof n.approved_at === "number");
 
-    // Extract unique states
+    // Extract unique states/categories/departments
     const statesSet = new Set<string>();
+    const categoriesSet = new Set<string>();
+    const departmentsSet = new Set<string>();
     for (const item of approved) {
       if (item.state) {
         statesSet.add(item.state.toLowerCase());
       }
+      if (item.category) {
+        categoriesSet.add(item.category.toLowerCase());
+      }
+      if (item.department && item.department.toUpperCase() !== "UNKNOWN") {
+        departmentsSet.add(item.department);
+      }
     }
 
-    return { states: Array.from(statesSet) };
+    return {
+      states: Array.from(statesSet),
+      categories: Array.from(categoriesSet),
+      departments: Array.from(departmentsSet).sort((a, b) => a.localeCompare(b)),
+    };
   } catch (error) {
     logErrorLocation(
       "homeService.ts",
@@ -658,6 +670,166 @@ export async function getAvailableFilters(): Promise<{ states: string[] }> {
       "DB error while fetching available filters",
       "",
       {},
+    );
+    throw error;
+  }
+}
+
+export interface IOpenNotificationFilters {
+  category?: string;
+  state?: string;
+  department?: string;
+  minVacancies?: number;
+  search?: string;
+  closingSoon?: boolean;
+  sortBy?: "last_date_to_apply" | "created_at";
+  sortOrder?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export interface IOpenNotificationItem {
+  sk: string;
+  title: string;
+  category: string;
+  state: string;
+  department: string;
+  total_vacancies?: number;
+  last_date_to_apply?: number;
+  created_at?: number;
+  general_fee?: number;
+}
+
+/**
+ * Fetches currently-open notifications (approved, not archived, deadline not
+ * passed) across every category/state, with ad-hoc filtering + sorting +
+ * offset pagination applied in memory — same full-scan-then-filter approach
+ * already used by getHomePageNotifications/getLatestNotifications/
+ * getAvailableFilters above, since these filters don't map onto a single GSI.
+ * Fee/qualification aren't filterable here: those live on separate FEE/
+ * ELIGIBILITY items in the single-table design, and joining them for every
+ * notification just to filter would mean fetching far more than this scan.
+ */
+export async function getOpenNotifications(
+  filters: IOpenNotificationFilters,
+): Promise<{ data: IOpenNotificationItem[]; total: number; hasMore: boolean }> {
+  try {
+    const items = await fetchDynamoDB<INotification>(
+      ALL_TABLE_NAMES.Notification,
+      undefined,
+      [
+        NOTIFICATION.sk,
+        NOTIFICATION.title,
+        NOTIFICATION.category,
+        NOTIFICATION.state,
+        NOTIFICATION.department,
+        NOTIFICATION.total_vacancies,
+        NOTIFICATION.last_date_to_apply,
+        NOTIFICATION.created_at,
+        NOTIFICATION.approved_at,
+        NOTIFICATION.type,
+      ],
+      {
+        [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+      },
+      "#type = :type",
+      undefined,
+      false, // exclude archived
+    );
+
+    const now = Date.now();
+    let filtered = items.filter(
+      (n) =>
+        typeof n.approved_at === "number" &&
+        typeof n.last_date_to_apply === "number" &&
+        n.last_date_to_apply >= now,
+    );
+
+    if (filters.category && filters.category !== "all") {
+      const category = filters.category.toLowerCase();
+      filtered = filtered.filter((n) => n.category?.toLowerCase() === category);
+    }
+    if (filters.state && filters.state !== "all") {
+      const state = filters.state.toLowerCase();
+      filtered = filtered.filter((n) => n.state?.toLowerCase() === state);
+    }
+    if (filters.department && filters.department.trim()) {
+      const department = filters.department.trim().toLowerCase();
+      filtered = filtered.filter((n) => n.department?.toLowerCase().includes(department));
+    }
+    if (typeof filters.minVacancies === "number" && filters.minVacancies > 0) {
+      filtered = filtered.filter((n) => (n.total_vacancies ?? 0) >= filters.minVacancies!);
+    }
+    if (filters.search && filters.search.trim()) {
+      const search = filters.search.trim().toLowerCase();
+      filtered = filtered.filter((n) => n.title?.toLowerCase().includes(search));
+    }
+    // "Closing soon" = last date to apply falls within the next 2 days —
+    // same threshold as the admin dashboard's closingSoon filter.
+    if (filters.closingSoon) {
+      const closingSoonUntil = now + 2 * 24 * 60 * 60 * 1000;
+      filtered = filtered.filter(
+        (n) => (n.last_date_to_apply as unknown as number) <= closingSoonUntil,
+      );
+    }
+
+    const sortBy = filters.sortBy === "created_at" ? "created_at" : "last_date_to_apply";
+    const sortOrder = filters.sortOrder === "desc" ? "desc" : "asc";
+    filtered.sort((a, b) => {
+      // last_date_to_apply/created_at are typed as string on INotification for
+      // historical reasons, but are always stored as epoch numbers (see toEpoch
+      // in addCompleteNotification) — same assumption getLatestNotifications
+      // above already relies on.
+      const av = Number(a[sortBy] ?? 0);
+      const bv = Number(b[sortBy] ?? 0);
+      return sortOrder === "asc" ? av - bv : bv - av;
+    });
+
+    const total = filtered.length;
+    const limit = filters.limit && filters.limit > 0 ? filters.limit : 20;
+    const offset = filters.offset && filters.offset > 0 ? filters.offset : 0;
+    const page = filtered.slice(offset, offset + limit);
+
+    // Fee lives on a separate FEE item per notification — only worth joining
+    // for the small page actually being returned, not the whole filtered set.
+    const pageIds = page.map(
+      (n) =>
+        n.sk
+          ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
+          ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
+    );
+    const generalFees = await Promise.all(
+      pageIds.map(async (id) => {
+        if (!id) return undefined;
+        const feeSk = `${TABLE_PK_MAPPER.Notification}${id}${NOTIFICATION_TYPE_MAPPER.FEE}`;
+        const feeItems = await fetchDynamoDB<any>(ALL_TABLE_NAMES.Notification, feeSk, [
+          NOTIFICATION.fee.general_fee,
+        ]);
+        return feeItems?.[0]?.general_fee as number | undefined;
+      }),
+    );
+
+    const data: IOpenNotificationItem[] = page.map((n, idx) => ({
+      sk: pageIds[idx],
+      title: n.title ?? "",
+      category: n.category ?? "",
+      state: n.state ?? "",
+      department: n.department ?? "",
+      total_vacancies: n.total_vacancies,
+      last_date_to_apply: n.last_date_to_apply as unknown as number | undefined,
+      created_at: n.created_at,
+      general_fee: generalFees[idx],
+    }));
+
+    return { data, total, hasMore: offset + limit < total };
+  } catch (error) {
+    logErrorLocation(
+      "homeService.ts",
+      "getOpenNotifications",
+      error,
+      "DB error while fetching open notifications",
+      "",
+      { filters },
     );
     throw error;
   }
