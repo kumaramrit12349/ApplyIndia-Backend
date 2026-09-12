@@ -10,6 +10,7 @@ import {
   getReviewComments,
   markDailyVideo,
   markWeeklyVideoBulk,
+  markGuidanceAvailable,
   unarchiveNotification,
   viewNotifications,
   bulkPermanentDeleteNotifications,
@@ -90,7 +91,7 @@ router.post("/add", requireRole("creator", "senior_reviewer", "admin"), checkNot
 // View all notifications — All roles (filtered by permissions)
 router.post("/view", async (req: any, res) => {
   try {
-    const { search, timeRange, category, state, dailyVideoDone, weeklyVideoDone, openOnly, closingSoon } = req.body || {};
+    const { search, timeRange, category, state, dailyVideoDone, weeklyVideoDone, openOnly, closingSoon, guidanceAvailable } = req.body || {};
     let notifications = await viewNotifications(
       search,
       timeRange,
@@ -100,6 +101,7 @@ router.post("/view", async (req: any, res) => {
       typeof weeklyVideoDone === "boolean" ? weeklyVideoDone : undefined,
       typeof openOnly === "boolean" ? openOnly : undefined,
       typeof closingSoon === "boolean" ? closingSoon : undefined,
+      typeof guidanceAvailable === "boolean" ? guidanceAvailable : undefined,
     );
 
     // Apply permission-based filtering for non-admin roles
@@ -310,6 +312,28 @@ router.patch(
       res.json({ success: true, data: result });
     } catch (err) {
       res.status(500).json({ success: false, error: "Failed to update daily video status" });
+    }
+  }
+);
+
+// Mark (or unmark) a notification as eligible for Online Application
+// Assistance, with the "How to Apply" guidance video link — Reviewer, Senior
+// Reviewer, Admin (scoped by permissions)
+router.patch(
+  "/:id/guidance",
+  requireRole("reviewer", "senior_reviewer", "admin"),
+  checkNotificationPermission(),
+  async (req: any, res) => {
+    try {
+      const { available, guidance_link } = req.body || {};
+      if (typeof available !== "boolean") {
+        return res.status(400).json({ success: false, error: "'available' (boolean) is required" });
+      }
+      const markedBy = await getDisplayName(req);
+      const result = await markGuidanceAvailable(req.params.id, available, guidance_link, markedBy);
+      res.json({ success: true, data: result });
+    } catch (err: any) {
+      res.status(400).json({ success: false, error: err?.message || "Failed to update guidance availability" });
     }
   }
 );

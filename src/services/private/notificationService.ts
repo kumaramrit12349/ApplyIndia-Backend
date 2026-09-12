@@ -262,6 +262,7 @@ export async function viewNotifications(
   weeklyVideoDone?: boolean,
   openOnly?: boolean,
   closingSoon?: boolean,
+  guidanceAvailable?: boolean,
 ): Promise<INotificationListItem[]> {
   try {
     // Build filter expressions
@@ -368,6 +369,14 @@ export async function viewNotifications(
       queryFilter["closingSoonUntil"] = now + 2 * 24 * 60 * 60 * 1000;
     }
 
+    // Restrict to notifications eligible for Online Application Assistance
+    // (a "How to Apply" guidance video has been linked).
+    if (guidanceAvailable) {
+      queryFilter["guidance_available"] = "guidance_available";
+      filterString += " AND #guidance_available = :guidanceAvailableTrue";
+      queryFilter["guidanceAvailableTrue"] = true;
+    }
+
     let notifications = await fetchDynamoDB<INotificationListItem>(
       ALL_TABLE_NAMES.Notification,
       undefined,
@@ -392,6 +401,10 @@ export async function viewNotifications(
         NOTIFICATION.weekly_video_marked_by,
         NOTIFICATION.weekly_video_marked_at,
         NOTIFICATION.weekly_video_batch_id,
+        NOTIFICATION.guidance_available,
+        NOTIFICATION.guidance_link,
+        NOTIFICATION.guidance_marked_by,
+        NOTIFICATION.guidance_marked_at,
       ],
       queryFilter,
       filterString,
@@ -861,6 +874,61 @@ export async function markDailyVideo(
       "DB error while marking daily video status",
       "",
       { id, done },
+    );
+    throw error;
+  }
+}
+
+// Mark (or unmark) a notification as eligible for Online Application
+// Assistance (guidance slot booking), tagging it with the "How to Apply"
+// YouTube video link. Only approved notifications are eligible, same rule
+// as daily/weekly video marking above.
+export async function markGuidanceAvailable(
+  id: string,
+  available: boolean,
+  guidanceLink: string | undefined,
+  markedBy: string,
+): Promise<Pick<INotification, "guidance_available" | "guidance_link" | "guidance_marked_by" | "guidance_marked_at">> {
+  try {
+    if (!id) {
+      throw new Error("Invalid notification id");
+    }
+    const pk = TABLE_PK_MAPPER.Notification;
+    const sk = `${pk}${id}${NOTIFICATION_TYPE_MAPPER.META}`;
+    const existingArr = await fetchDynamoDB<INotification>(ALL_TABLE_NAMES.Notification, sk);
+    const existing = existingArr[0];
+    if (!existing) {
+      throw new Error("Notification not found");
+    }
+    if (!existing.approved_at) {
+      throw new Error("Only approved notifications can be marked guidance-available");
+    }
+    if (available && (!guidanceLink || !guidanceLink.trim())) {
+      throw new Error("A guidance video URL is required to mark guidance available");
+    }
+    const attributesToUpdate = available
+      ? {
+          guidance_available: true,
+          guidance_link: guidanceLink!.trim(),
+          guidance_marked_by: markedBy,
+          guidance_marked_at: Date.now(),
+        }
+      : {
+          guidance_available: false,
+          guidance_link: null,
+          guidance_marked_by: null,
+          guidance_marked_at: null,
+        };
+    await updateDynamoDB(pk, sk, attributesToUpdate);
+    return attributesToUpdate;
+  } catch (error) {
+    logErrorLocation(
+      "notificationService.ts",
+      "markGuidanceAvailable",
+      error,
+      "DB error while marking guidance availability",
+      "",
+      { id, available },
     );
     throw error;
   }

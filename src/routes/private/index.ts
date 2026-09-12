@@ -8,6 +8,8 @@ import eligibilityRoutes from "./eligibility"
 import emailTemplateRoutes from "./emailTemplate"
 import usersRoutes from "./users"
 import openNotificationsRoutes from "./openNotifications"
+import guidanceBookingRoutes from "./guidanceBooking"
+import guidanceAdminRoutes from "./guidanceAdmin"
 
 const router = Router();
 
@@ -20,5 +22,7 @@ router.use("/eligibility", eligibilityRoutes);
 router.use("/email-templates", emailTemplateRoutes);
 router.use("/users", usersRoutes);
 router.use("/open-notifications", openNotificationsRoutes);
+router.use("/guidance", guidanceBookingRoutes);
+router.use("/guidance-admin", guidanceAdminRoutes);
 
 export default router;

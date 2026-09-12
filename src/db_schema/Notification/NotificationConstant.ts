@@ -50,6 +50,11 @@ export const NOTIFICATION = {
   weekly_video_marked_at: "weekly_video_marked_at",
   weekly_video_batch_id: "weekly_video_batch_id",
 
+  guidance_available: "guidance_available",
+  guidance_link: "guidance_link",
+  guidance_marked_by: "guidance_marked_by",
+  guidance_marked_at: "guidance_marked_at",
+
   comment: {
     comment_id: "comment_id",
     reviewer_sub: "reviewer_sub",
@@ -165,6 +170,11 @@ export const DETAIL_VIEW_NOTIFICATION = [
   NOTIFICATION.weekly_video_marked_by,
   NOTIFICATION.weekly_video_marked_at,
   NOTIFICATION.weekly_video_batch_id,
+
+  NOTIFICATION.guidance_available,
+  NOTIFICATION.guidance_link,
+  NOTIFICATION.guidance_marked_by,
+  NOTIFICATION.guidance_marked_at,
 ];
 
 export const HOME_PAGE_NOTIFICATION = [

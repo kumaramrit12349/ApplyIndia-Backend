@@ -68,6 +68,14 @@ export interface INotification {
   weekly_video_marked_by?: string | null;
   weekly_video_marked_at?: number | null;
   weekly_video_batch_id?: string | null;
+
+  /** Online Application Assistance eligibility — set once a "How to Apply"
+   * YouTube video exists for this notification. Guidance slot booking is
+   * only offered to users when this is true (see guidanceBookingService). */
+  guidance_available?: boolean;
+  guidance_link?: string | null;
+  guidance_marked_by?: string | null;
+  guidance_marked_at?: number | null;
 }
 
 export interface INotificationDetails {
@@ -124,6 +132,10 @@ export interface INotificationListItem {
   weekly_video_marked_by?: string | null;
   weekly_video_marked_at?: number | null;
   weekly_video_batch_id?: string | null;
+  guidance_available?: boolean;
+  guidance_link?: string | null;
+  guidance_marked_by?: string | null;
+  guidance_marked_at?: number | null;
 }
 
 export type INotificationItem =

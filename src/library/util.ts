@@ -43,6 +43,19 @@ export function buildNotificationDetail(items: any[]): any {
         count_admit_card: item.count_admit_card,
         count_result: item.count_result,
         count_selected: item.count_selected,
+        daily_video_done: item.daily_video_done,
+        daily_video_url: item.daily_video_url,
+        daily_video_marked_by: item.daily_video_marked_by,
+        daily_video_marked_at: item.daily_video_marked_at,
+        weekly_video_done: item.weekly_video_done,
+        weekly_video_url: item.weekly_video_url,
+        weekly_video_marked_by: item.weekly_video_marked_by,
+        weekly_video_marked_at: item.weekly_video_marked_at,
+        weekly_video_batch_id: item.weekly_video_batch_id,
+        guidance_available: item.guidance_available,
+        guidance_link: item.guidance_link,
+        guidance_marked_by: item.guidance_marked_by,
+        guidance_marked_at: item.guidance_marked_at,
       });
     }
     if (sk.endsWith(`${NOTIFICATION_TYPE_MAPPER.DETAILS}`)) {

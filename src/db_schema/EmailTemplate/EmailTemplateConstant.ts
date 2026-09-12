@@ -13,4 +13,6 @@ export const EMAIL_TEMPLATE = {
 // as new emails are introduced.
 export const EMAIL_TEMPLATE_KEYS = {
   NOTIFICATION_APPROVED: "notification-approved",
+  GUIDANCE_BOOKING_CONFIRMED: "guidance-booking-confirmed",
+  GUIDANCE_SLOT_CANCELLED: "guidance-slot-cancelled",
 } as const;
