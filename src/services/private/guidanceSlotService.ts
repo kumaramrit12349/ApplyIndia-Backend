@@ -276,14 +276,36 @@ export async function cancelSlot(
 }
 
 /**
- * Deletes every still-AVAILABLE (never booked) slot for a notification in
- * one action — the common cleanup need once a notification's deadline has
- * passed and its unused open slots are just clutter. Deliberately scoped to
- * AVAILABLE only: booked/completed/already-cancelled slots need individual
- * handling via cancelSlot() (a booked one has a real booking referencing it
- * and triggers a user-facing cancellation email) — an available slot has
- * neither, so there's nothing worth preserving by soft-cancelling it; a
- * hard delete avoids leaving dead "cancelled" rows behind forever.
+ * Hard-deletes whichever of the given slots are still AVAILABLE (never
+ * booked) and owned by the caller (Admin is unrestricted). Booked/completed/
+ * already-cancelled slots are silently skipped — those have a real booking
+ * referencing them and need individual handling via cancelSlot() instead —
+ * an AVAILABLE slot has neither a booking nor an email owed, so there's
+ * nothing worth preserving by soft-cancelling it; deleting it avoids leaving
+ * dead "cancelled" rows behind forever. Shared by both the "delete all
+ * available for this notification" and "delete these specific slots" flows.
+ */
+async function deleteSlotsIfAvailable(
+  slots: IGuidanceSlot[],
+  callerSub?: string,
+  callerRole?: string
+): Promise<{ deletedCount: number; skippedCount: number }> {
+  const deletable = slots.filter(
+    (slot) =>
+      slot.status === GUIDANCE_SLOT_STATUS.AVAILABLE &&
+      (callerRole === "admin" || !callerSub || slot.created_by === callerSub)
+  );
+  const outcomes = await Promise.allSettled(
+    deletable.map((slot) => deleteDynamoDB(TABLE_PK_MAPPER.GuidanceSlot, slot.sk!))
+  );
+  const deletedCount = outcomes.filter((o) => o.status === "fulfilled" && o.value === true).length;
+  return { deletedCount, skippedCount: slots.length - deletedCount };
+}
+
+/**
+ * Deletes every still-AVAILABLE slot for a notification in one action — the
+ * common cleanup need once a notification's deadline has passed and its
+ * unused open slots are just clutter.
  */
 export async function bulkCancelAvailableSlots(
   notificationId: string,
@@ -299,13 +321,32 @@ export async function bulkCancelAvailableSlots(
       undefined,
       ownerSub
     );
-    const outcomes = await Promise.allSettled(
-      availableSlots.map((slot) => deleteDynamoDB(TABLE_PK_MAPPER.GuidanceSlot, slot.sk!))
-    );
-    const cancelledCount = outcomes.filter((o) => o.status === "fulfilled" && o.value === true).length;
-    return { cancelledCount, failedCount: availableSlots.length - cancelledCount };
+    const { deletedCount, skippedCount } = await deleteSlotsIfAvailable(availableSlots, callerSub, callerRole);
+    return { cancelledCount: deletedCount, failedCount: skippedCount };
   } catch (error) {
     logErrorLocation("guidanceSlotService.ts", "bulkCancelAvailableSlots", error, "Error bulk-deleting available slots", "", { notificationId });
+    throw error;
+  }
+}
+
+/**
+ * Deletes a specific, admin-picked set of slots — for the "select a few
+ * available slots and delete just those" flow. Any slot in the list that
+ * isn't AVAILABLE (or isn't owned by a non-admin caller) is silently
+ * skipped rather than erroring the whole batch.
+ */
+export async function bulkDeleteSlots(
+  slotSks: string[],
+  callerSub?: string,
+  callerRole?: string
+): Promise<{ deletedCount: number; skippedCount: number }> {
+  try {
+    const slots = (await Promise.all(slotSks.map((sk) => getSlotBySk(sk)))).filter(
+      (s): s is IGuidanceSlot => !!s
+    );
+    return await deleteSlotsIfAvailable(slots, callerSub, callerRole);
+  } catch (error) {
+    logErrorLocation("guidanceSlotService.ts", "bulkDeleteSlots", error, "Error deleting selected slots", "", { slotSks });
     throw error;
   }
 }

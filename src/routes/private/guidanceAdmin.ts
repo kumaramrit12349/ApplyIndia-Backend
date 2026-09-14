@@ -6,6 +6,7 @@ import {
   setSlotAvailability,
   cancelSlot,
   bulkCancelAvailableSlots,
+  bulkDeleteSlots,
 } from "../../services/private/guidanceSlotService";
 import {
   listBookingsForAdmin,
@@ -98,6 +99,22 @@ router.post("/slots/bulk-cancel-available", async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     respondError(res, error, "Failed to bulk-cancel available slots");
+  }
+});
+
+// POST /api/guidance-admin/slots/bulk-delete  { slot_sks: string[] }
+router.post("/slots/bulk-delete", async (req, res) => {
+  try {
+    const { slot_sks } = req.body;
+    if (!Array.isArray(slot_sks) || slot_sks.length === 0) {
+      return res.status(400).json({ success: false, error: "slot_sks must be a non-empty array" });
+    }
+    const callerSub = (req as any).user?.sub;
+    const callerRole = (req as any).adminRole;
+    const result = await bulkDeleteSlots(slot_sks, callerSub, callerRole);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    respondError(res, error, "Failed to delete selected slots");
   }
 });
 
