@@ -69,6 +69,9 @@ export const ALL_TABLE_NAMES = {
   Site: "Site",
   EmailTemplate: "EmailTemplate",
   SocialPost: "SocialPost",
+  GuidanceSlot: "GuidanceSlot",
+  GuidanceBooking: "GuidanceBooking",
+  GuidanceFeedback: "GuidanceFeedback",
 };
 
 export const TABLE_PK_MAPPER = {
@@ -78,6 +81,9 @@ export const TABLE_PK_MAPPER = {
   Site: "Site#",
   EmailTemplate: "EmailTemplate#",
   SocialPost: "SocialPost#",
+  GuidanceSlot: "GuidanceSlot#",
+  GuidanceBooking: "GuidanceBooking#",
+  GuidanceFeedback: "GuidanceFeedback#",
 };
 
 export const INSERT_ITEM_MAPPER = {

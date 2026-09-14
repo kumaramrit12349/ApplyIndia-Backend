@@ -53,7 +53,7 @@ router.get("/", requireRole("admin"), async (_req, res) => {
  *
  * Body: {
  *   email: string,
- *   role: "creator" | "reviewer" | "senior_reviewer" | "admin",
+ *   role: "creator" | "reviewer" | "senior_reviewer" | "admin" | "guidance_partner",
  *   permissions: {
  *     categories: string[],
  *     states: string[],
@@ -73,7 +73,7 @@ router.post("/assign", requireRole("admin"), async (req: any, res) => {
       });
     }
 
-    const validRoles: AdminRole[] = ["creator", "reviewer", "senior_reviewer", "admin"];
+    const validRoles: AdminRole[] = ["creator", "reviewer", "senior_reviewer", "admin", "guidance_partner"];
     if (!validRoles.includes(role)) {
       return res.status(400).json({
         success: false,

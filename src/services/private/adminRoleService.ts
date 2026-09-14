@@ -1,11 +1,12 @@
 import { AdminRole, IAdminPermissions, IUser } from "../../db_schema/User/UserInterface";
-import { TABLE_PK_MAPPER } from "../../db_schema/shared/SharedConstant";
+import { ALL_TABLE_NAMES, TABLE_PK_MAPPER } from "../../db_schema/shared/SharedConstant";
 import { queryItemsFromDynamoDB } from "../../dynamoDB_CRUD/fetchData";
 import { updateItemDynamoDB } from "../../dynamoDB_CRUD/updateData";
 import { fetchDynamoDB } from "../../Interpreter/dynamoDB/fetchCalls";
 import { logErrorLocation } from "../../utils/errorUtils";
 import { DYNAMODB_CONFIG } from "../../config/env";
 import { QueryCommandInput } from "@aws-sdk/client-dynamodb";
+import { getCognitoUserSubByEmail, getCognitoUserEmail } from "../authService";
 
 /* ================================================================
    HARDCODED SUPER-ADMIN FALLBACK (lock-out safety net)
@@ -43,7 +44,20 @@ export async function getAllAdminUsers(): Promise<IUser[]> {
     };
 
     const results = await queryItemsFromDynamoDB<IUser>(params);
-    return results;
+
+    // DynamoDB can hold orphaned User# rows for Cognito accounts that were
+    // later deleted (e.g. repeated test signups reusing the same email) — a
+    // JWT issued before deletion still verifies cryptographically, so
+    // without this check a deleted account's cached role would keep
+    // granting admin access until someone manually removes the DynamoDB
+    // row. Only ever treat a sub as an admin if Cognito still has it.
+    const liveChecks = await Promise.all(
+      results.map(async (user) => ({
+        user,
+        isLive: user.sub ? !!(await getCognitoUserEmail(user.sub)) : false,
+      }))
+    );
+    return liveChecks.filter((r) => r.isLive).map((r) => r.user);
   } catch (error) {
     logErrorLocation(
       "adminRoleService.ts",
@@ -129,23 +143,15 @@ export async function lookupUserByEmail(
   email: string
 ): Promise<IUser | null> {
   try {
+    // Resolve the CURRENT owner of this email via Cognito first — DynamoDB
+    // can hold multiple orphaned User# rows for the same email (leftover
+    // from deleted/recreated test accounts), and a plain scan on `email`
+    // has no way to tell which one is actually still a live account.
+    const sub = await getCognitoUserSubByEmail(email.toLowerCase());
+    if (!sub) return null;
+
     const pk = TABLE_PK_MAPPER.User;
-
-    const params: QueryCommandInput = {
-      TableName: DYNAMODB_CONFIG.TABLE_NAME,
-      KeyConditionExpression: "#pk = :pk",
-      FilterExpression: "#email = :email",
-      ExpressionAttributeNames: {
-        "#pk": "pk",
-        "#email": "email",
-      },
-      ExpressionAttributeValues: {
-        ":pk": pk as any,
-        ":email": email.toLowerCase() as any,
-      },
-    };
-
-    const results = await queryItemsFromDynamoDB<IUser>(params);
+    const results = await fetchDynamoDB<IUser>(ALL_TABLE_NAMES.User, `${pk}${sub}`);
     return results.length > 0 ? results[0] : null;
   } catch (error) {
     logErrorLocation(

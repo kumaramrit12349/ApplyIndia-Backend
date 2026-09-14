@@ -449,6 +449,28 @@ export async function updateNotificationPreferences(sub: string, data: INotifica
   }
 }
 
+/**
+ * Resolves the current, authoritative Cognito `sub` for an email. Cognito
+ * enforces one active account per email; DynamoDB's own `email` field does
+ * not (deleted/recreated test accounts leave orphaned `User#<old sub>` rows
+ * behind), so anything that looks a user up BY email — e.g. assigning an
+ * admin role by typing an email address — must resolve through Cognito
+ * first rather than trusting an un-tie-broken DynamoDB scan on `email`.
+ */
+export async function getCognitoUserSubByEmail(email: string): Promise<string | undefined> {
+  try {
+    const cmd = new ListUsersCommand({
+      UserPoolId: COGNITO_CONFIG.userPoolId,
+      Filter: `email = "${email}"`,
+    });
+    const res = await cognito.send(cmd);
+    return res.Users?.[0]?.Username;
+  } catch (error) {
+    console.error("getCognitoUserSubByEmail - ListUsers failed:", error);
+    return undefined;
+  }
+}
+
 export async function getCognitoUserEmail(sub: string): Promise<string | undefined> {
   const cmd = new AdminGetUserCommand({
     UserPoolId: process.env.COGNITO_USER_POOL_ID!,

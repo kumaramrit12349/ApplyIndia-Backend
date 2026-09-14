@@ -1,8 +1,9 @@
-import { DYNAMODB_KEYWORDS, RELATIONAL_OPERATORS, RETURN_VALUES_MAPPER, SPECIAL_CHARACTERS } from "../../db_schema/shared/SharedConstant";
+import { DYNAMODB_KEYWORDS, RELATIONAL_OPERATORS, RETURN_VALUES_MAPPER, SPECIAL_CHARACTERS, TABLE_PK_MAPPER } from "../../db_schema/shared/SharedConstant";
 import { IKeyValues } from "../../db_schema/shared/SharedInterface";
 import { updateItemDynamoDB } from "../../dynamoDB_CRUD/updateData";
 import { handleErrorsAxios, logErrorLocation } from "../../utils/errorUtils";
 import { ChannelStatus, IChannelResult } from "../../db_schema/Notification/DistributionInterface";
+import { GUIDANCE_SLOT_STATUS } from "../../db_schema/GuidanceSlot/GuidanceSlotConstant";
 
 export async function updateDynamoDB(
   pk: string,
@@ -154,6 +155,38 @@ export async function incrementDistributionChannelCounters(
       { pk, sk, channel, delta }
     );
     handleErrorsAxios(error, {});
+  }
+}
+
+/**
+ * Atomically flips a GuidanceSlot from "available" to "booked", used right
+ * before inserting the GuidanceBooking row. Two users can race to book the
+ * same slot; the ConditionExpression means only one of them wins the flip —
+ * the loser gets `false` back and should surface a "someone else just booked
+ * this slot" error rather than proceeding to create a booking. Mirrors the
+ * ConditionalCheckFailedException-as-benign-race pattern already used by
+ * maybeFinalizeDistributionChannel above.
+ */
+export async function conditionallyMarkSlotBooked(
+  slotSk: string,
+  bookingSk: string
+): Promise<boolean> {
+  try {
+    await updateItemDynamoDB({
+      Key: { pk: TABLE_PK_MAPPER.GuidanceSlot, sk: slotSk },
+      UpdateExpression: "set #status = :booked, #booking_sk = :booking_sk",
+      ConditionExpression: "#status = :available",
+      ExpressionAttributeNames: { "#status": "status", "#booking_sk": "booking_sk" },
+      ExpressionAttributeValues: {
+        ":booked": GUIDANCE_SLOT_STATUS.BOOKED,
+        ":available": GUIDANCE_SLOT_STATUS.AVAILABLE,
+        ":booking_sk": bookingSk,
+      },
+    });
+    return true;
+  } catch (error: any) {
+    if (error?.name !== "ConditionalCheckFailedException") throw error;
+    return false;
   }
 }
 
