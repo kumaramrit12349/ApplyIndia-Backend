@@ -113,7 +113,8 @@ export async function listSlotsForAdmin(
   notificationId: string | undefined,
   statusFilter: string | undefined,
   limit: number,
-  startKey?: Record<string, any>
+  startKey?: Record<string, any>,
+  ownerSub?: string
 ): Promise<{ results: IGuidanceSlot[]; lastEvaluatedKey?: { pk: string; sk: string } }> {
   try {
     const queryFilter: Record<string, any> = {};
@@ -126,6 +127,12 @@ export async function listSlotsForAdmin(
       queryFilter[GUIDANCE_SLOT.status] = statusFilter;
       clauses.push("#status = :status");
     }
+    // A Guidance Partner only ever sees slots they created themselves — Admin
+    // passes no ownerSub and sees everyone's.
+    if (ownerSub) {
+      queryFilter[GUIDANCE_SLOT.created_by] = ownerSub;
+      clauses.push("#created_by = :created_by");
+    }
     return await fetchDynamoDBWithLimit<IGuidanceSlot>(
       ALL_TABLE_NAMES.GuidanceSlot,
       limit,
@@ -136,7 +143,7 @@ export async function listSlotsForAdmin(
       false // most-recently-created slots first
     );
   } catch (error) {
-    logErrorLocation("guidanceSlotService.ts", "listSlotsForAdmin", error, "Error listing guidance slots", "", { notificationId, statusFilter });
+    logErrorLocation("guidanceSlotService.ts", "listSlotsForAdmin", error, "Error listing guidance slots", "", { notificationId, statusFilter, ownerSub });
     throw error;
   }
 }
@@ -156,11 +163,12 @@ export async function getAvailableSlotsForNotification(notificationId: string): 
       .sort((a, b) => a.start_time - b.start_time);
     if (candidates.length === 0) return [];
 
-    // The same admin/counselor runs every guidance session, so a given
-    // wall-clock time can only ever host one — even if it was separately
-    // created as a slot for a different notification. Hide any candidate
-    // whose exact start_time is already claimed by a booking on ANY
-    // notification's slot.
+    // Each Guidance Partner (or Admin) runs their own calendar, so a given
+    // wall-clock time can only host one session PER PARTNER — even if it was
+    // separately created as a slot for a different notification. Hide a
+    // candidate only when the SAME creator already has a booking at that
+    // exact start_time; a different partner's slot at the same time is a
+    // different person and stays available.
     const bookedElsewhere = await fetchDynamoDB<IGuidanceSlot>(
       ALL_TABLE_NAMES.GuidanceSlot,
       undefined,
@@ -168,19 +176,27 @@ export async function getAvailableSlotsForNotification(notificationId: string): 
       { status: GUIDANCE_SLOT_STATUS.BOOKED },
       "#status = :status"
     );
-    const occupiedTimes = new Set(bookedElsewhere.map((s) => s.start_time));
+    const occupiedByCreator = new Set(bookedElsewhere.map((s) => `${s.created_by}#${s.start_time}`));
 
-    return candidates.filter((slot) => !occupiedTimes.has(slot.start_time));
+    return candidates.filter((slot) => !occupiedByCreator.has(`${slot.created_by}#${slot.start_time}`));
   } catch (error) {
     logErrorLocation("guidanceSlotService.ts", "getAvailableSlotsForNotification", error, "Error fetching available slots", "", { notificationId });
     throw error;
   }
 }
 
-export async function setSlotAvailability(slotSk: string, available: boolean): Promise<IGuidanceSlot> {
+export async function setSlotAvailability(
+  slotSk: string,
+  available: boolean,
+  callerSub?: string,
+  callerRole?: string
+): Promise<IGuidanceSlot> {
   try {
     const slot = await getSlotBySk(slotSk);
     if (!slot) throw new Error("SLOT_NOT_FOUND");
+    if (callerRole !== "admin" && callerSub && slot.created_by !== callerSub) {
+      throw new Error("NOT_YOUR_SLOT");
+    }
     if (slot.status === GUIDANCE_SLOT_STATUS.BOOKED) {
       throw new Error("SLOT_ALREADY_BOOKED");
     }
@@ -205,11 +221,16 @@ export async function setSlotAvailability(slotSk: string, available: boolean): P
  */
 export async function cancelSlot(
   slotSk: string,
-  reason?: string
+  reason?: string,
+  callerSub?: string,
+  callerRole?: string
 ): Promise<{ slot: IGuidanceSlot; cancelledBooking?: IGuidanceBooking }> {
   try {
     const slot = await getSlotBySk(slotSk);
     if (!slot) throw new Error("SLOT_NOT_FOUND");
+    if (callerRole !== "admin" && callerSub && slot.created_by !== callerSub) {
+      throw new Error("NOT_YOUR_SLOT");
+    }
     if (slot.status === GUIDANCE_SLOT_STATUS.CANCELLED) {
       return { slot };
     }

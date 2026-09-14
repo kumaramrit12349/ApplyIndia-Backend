@@ -101,10 +101,12 @@ export async function createBooking(
       throw new Error("DEADLINE_PASSED");
     }
 
-    // The same admin/counselor runs every guidance session — if this exact
-    // wall-clock time is already booked via a DIFFERENT notification's slot
-    // record, this one is effectively unavailable too (defense in depth;
-    // getAvailableSlotsForNotification already hides these from the list).
+    // Each Guidance Partner (or Admin) runs their own calendar — if this
+    // exact wall-clock time is already booked via a DIFFERENT notification's
+    // slot record BY THE SAME CREATOR, this one is effectively unavailable
+    // too (defense in depth; getAvailableSlotsForNotification already hides
+    // these from the list). A different partner's slot at the same time is a
+    // different person and is not a conflict.
     const bookedElsewhere = await fetchDynamoDB<IGuidanceSlot>(
       ALL_TABLE_NAMES.GuidanceSlot,
       undefined,
@@ -112,7 +114,7 @@ export async function createBooking(
       { status: GUIDANCE_SLOT_STATUS.BOOKED },
       "#status = :status"
     );
-    if (bookedElsewhere.some((s) => s.sk !== params.slot_sk && s.start_time === slot.start_time)) {
+    if (bookedElsewhere.some((s) => s.sk !== params.slot_sk && s.start_time === slot.start_time && s.created_by === slot.created_by)) {
       throw new Error("SLOT_ALREADY_BOOKED");
     }
 
@@ -138,6 +140,7 @@ export async function createBooking(
       notification_id: params.notification_id,
       notification_title: notification?.title || "Application",
       slot_sk: params.slot_sk,
+      slot_created_by: slot.created_by,
       slot_start_time: slot.start_time,
       slot_end_time: slot.end_time,
       meet_link: slot.meet_link,
@@ -197,11 +200,16 @@ export async function cancelMyBooking(userSub: string, bookingSk: string): Promi
 export async function markBookingOutcome(
   bookingSk: string,
   outcome: GUIDANCE_BOOKING_STATUS.COMPLETED | GUIDANCE_BOOKING_STATUS.NO_SHOW,
-  adminNotes?: string
+  adminNotes?: string,
+  callerSub?: string,
+  callerRole?: string
 ): Promise<IGuidanceBooking> {
   try {
     const booking = await getBookingBySk(bookingSk);
     if (!booking) throw new Error("BOOKING_NOT_FOUND");
+    if (callerRole !== "admin" && callerSub && booking.slot_created_by !== callerSub) {
+      throw new Error("NOT_YOUR_BOOKING");
+    }
     if (booking.status !== GUIDANCE_BOOKING_STATUS.UPCOMING) throw new Error("BOOKING_ALREADY_FINALIZED");
 
     const now = Date.now();
@@ -251,6 +259,7 @@ export async function listBookingsForAdmin(opts: {
   status?: string;
   limit: number;
   startKey?: Record<string, any>;
+  ownerSub?: string;
 }): Promise<{ results: IGuidanceBooking[]; lastEvaluatedKey?: { pk: string; sk: string } }> {
   try {
     const queryFilter: Record<string, any> = {};
@@ -262,6 +271,12 @@ export async function listBookingsForAdmin(opts: {
     if (opts.status) {
       queryFilter.status = opts.status;
       clauses.push("#status = :status");
+    }
+    // A Guidance Partner only ever sees bookings for slots they created
+    // themselves — Admin passes no ownerSub and sees everyone's.
+    if (opts.ownerSub) {
+      queryFilter.slot_created_by = opts.ownerSub;
+      clauses.push("#slot_created_by = :slot_created_by");
     }
     return await fetchDynamoDBWithLimit<IGuidanceBooking>(
       ALL_TABLE_NAMES.GuidanceBooking,

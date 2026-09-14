@@ -6,6 +6,7 @@ export const GUIDANCE_BOOKING = {
   notification_id: "notification_id",
   notification_title: "notification_title",
   slot_sk: "slot_sk",
+  slot_created_by: "slot_created_by",
   slot_start_time: "slot_start_time",
   slot_end_time: "slot_end_time",
   meet_link: "meet_link",

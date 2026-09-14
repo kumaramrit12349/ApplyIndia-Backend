@@ -19,11 +19,20 @@ import { GUIDANCE_BOOKING_STATUS } from "../../db_schema/GuidanceBooking/Guidanc
 
 const router = Router();
 router.use(authenticateTokenAndEmail);
-router.use(requireRole("admin"));
+// Guidance Partners manage only their own slots/bookings (enforced in the
+// service layer below); Feedback moderation and Stats stay Admin-only via an
+// extra requireRole("admin") directly on those specific routes.
+router.use(requireRole("admin", "guidance_partner"));
+
+const ERROR_STATUS_MAP: Record<string, number> = {
+  NOT_YOUR_SLOT: 403,
+  NOT_YOUR_BOOKING: 403,
+};
 
 function respondError(res: any, error: any, fallback: string) {
   console.error(error);
-  res.status(400).json({ success: false, error: error?.message || fallback });
+  const msg = error?.message || fallback;
+  res.status(ERROR_STATUS_MAP[msg] || 400).json({ success: false, error: msg });
 }
 
 // POST /api/guidance-admin/slots  { notification_id, start_time, meet_link, notes? }
@@ -42,7 +51,9 @@ router.post("/slots", async (req, res) => {
 router.post("/slots/list", async (req, res) => {
   try {
     const { notificationId, status, limit = 30, startKey } = req.body;
-    const data = await listSlotsForAdmin(notificationId, status, limit, startKey);
+    const callerRole = (req as any).adminRole;
+    const ownerSub = callerRole === "admin" ? undefined : (req as any).user?.sub;
+    const data = await listSlotsForAdmin(notificationId, status, limit, startKey, ownerSub);
     res.json({ success: true, ...data });
   } catch (error) {
     respondError(res, error, "Failed to list slots");
@@ -52,7 +63,9 @@ router.post("/slots/list", async (req, res) => {
 // PATCH /api/guidance-admin/slots/:id/availability  { available: boolean }
 router.patch("/slots/:id/availability", async (req, res) => {
   try {
-    const slot = await setSlotAvailability(decodeURIComponent(req.params.id), !!req.body.available);
+    const callerSub = (req as any).user?.sub;
+    const callerRole = (req as any).adminRole;
+    const slot = await setSlotAvailability(decodeURIComponent(req.params.id), !!req.body.available, callerSub, callerRole);
     res.json({ success: true, data: slot });
   } catch (error) {
     respondError(res, error, "Failed to update slot availability");
@@ -62,7 +75,9 @@ router.patch("/slots/:id/availability", async (req, res) => {
 // POST /api/guidance-admin/slots/:id/cancel  { reason? }
 router.post("/slots/:id/cancel", async (req, res) => {
   try {
-    const result = await cancelSlot(decodeURIComponent(req.params.id), req.body.reason);
+    const callerSub = (req as any).user?.sub;
+    const callerRole = (req as any).adminRole;
+    const result = await cancelSlot(decodeURIComponent(req.params.id), req.body.reason, callerSub, callerRole);
     res.json({ success: true, data: result });
   } catch (error) {
     respondError(res, error, "Failed to cancel slot");
@@ -73,7 +88,9 @@ router.post("/slots/:id/cancel", async (req, res) => {
 router.post("/bookings/list", async (req, res) => {
   try {
     const { notificationId, status, limit = 30, startKey } = req.body;
-    const data = await listBookingsForAdmin({ notificationId, status, limit, startKey });
+    const callerRole = (req as any).adminRole;
+    const ownerSub = callerRole === "admin" ? undefined : (req as any).user?.sub;
+    const data = await listBookingsForAdmin({ notificationId, status, limit, startKey, ownerSub });
     res.json({ success: true, ...data });
   } catch (error) {
     respondError(res, error, "Failed to list bookings");
@@ -87,7 +104,9 @@ router.post("/bookings/:id/outcome", async (req, res) => {
     if (outcome !== GUIDANCE_BOOKING_STATUS.COMPLETED && outcome !== GUIDANCE_BOOKING_STATUS.NO_SHOW) {
       return res.status(400).json({ success: false, error: "outcome must be 'completed' or 'no_show'" });
     }
-    const booking = await markBookingOutcome(decodeURIComponent(req.params.id), outcome, adminNotes);
+    const callerSub = (req as any).user?.sub;
+    const callerRole = (req as any).adminRole;
+    const booking = await markBookingOutcome(decodeURIComponent(req.params.id), outcome, adminNotes, callerSub, callerRole);
     res.json({ success: true, data: booking });
   } catch (error) {
     respondError(res, error, "Failed to mark booking outcome");
@@ -95,7 +114,7 @@ router.post("/bookings/:id/outcome", async (req, res) => {
 });
 
 // POST /api/guidance-admin/feedback/list  { status?, limit?, startKey? }
-router.post("/feedback/list", async (req, res) => {
+router.post("/feedback/list", requireRole("admin"), async (req, res) => {
   try {
     const { status, limit = 30, startKey } = req.body;
     const data = await listFeedbackForModeration({ status, limit, startKey });
@@ -106,7 +125,7 @@ router.post("/feedback/list", async (req, res) => {
 });
 
 // POST /api/guidance-admin/feedback/:id/moderate  { action, displayNameOverride? }
-router.post("/feedback/:id/moderate", async (req, res) => {
+router.post("/feedback/:id/moderate", requireRole("admin"), async (req, res) => {
   try {
     const adminSub = (req as any).user?.sub;
     const { action, displayNameOverride } = req.body;
@@ -118,7 +137,7 @@ router.post("/feedback/:id/moderate", async (req, res) => {
 });
 
 // GET /api/guidance-admin/stats
-router.get("/stats", async (_req, res) => {
+router.get("/stats", requireRole("admin"), async (_req, res) => {
   try {
     const stats = await getGuidanceStats();
     res.json({ success: true, data: stats });

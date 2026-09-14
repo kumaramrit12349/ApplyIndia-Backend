@@ -9,6 +9,8 @@ export interface IGuidanceBooking {
   /** Denormalized at booking time so booking lists don't need a join. */
   notification_title: string;
   slot_sk: string;
+  /** Denormalized from the slot's created_by at booking time — the Guidance Partner (or Admin) who owns this session. */
+  slot_created_by: string;
   slot_start_time: number;
   slot_end_time: number;
   meet_link: string;
