@@ -5,6 +5,7 @@ import {
   listSlotsForAdmin,
   setSlotAvailability,
   cancelSlot,
+  bulkCancelAvailableSlots,
 } from "../../services/private/guidanceSlotService";
 import {
   listBookingsForAdmin,
@@ -81,6 +82,22 @@ router.post("/slots/:id/cancel", async (req, res) => {
     res.json({ success: true, data: result });
   } catch (error) {
     respondError(res, error, "Failed to cancel slot");
+  }
+});
+
+// POST /api/guidance-admin/slots/bulk-cancel-available  { notification_id }
+router.post("/slots/bulk-cancel-available", async (req, res) => {
+  try {
+    const { notification_id } = req.body;
+    if (!notification_id) {
+      return res.status(400).json({ success: false, error: "notification_id is required" });
+    }
+    const callerSub = (req as any).user?.sub;
+    const callerRole = (req as any).adminRole;
+    const result = await bulkCancelAvailableSlots(notification_id, callerSub, callerRole);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    respondError(res, error, "Failed to bulk-cancel available slots");
   }
 });
 

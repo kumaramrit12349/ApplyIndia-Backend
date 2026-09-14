@@ -14,6 +14,7 @@ import { IGuidanceBooking } from "../../db_schema/GuidanceBooking/GuidanceBookin
 import { fetchDynamoDB, fetchDynamoDBWithLimit } from "../../Interpreter/dynamoDB/fetchCalls";
 import { insertDataDynamoDB } from "../../Interpreter/dynamoDB/insertCalls";
 import { updateDynamoDB } from "../../Interpreter/dynamoDB/updateCalls";
+import { deleteDynamoDB } from "../../Interpreter/dynamoDB/deleteCalls";
 import { sendEmail } from "../external/emailService";
 import { logErrorLocation } from "../../utils/errorUtils";
 import { getNotificationById } from "./notificationService";
@@ -270,6 +271,41 @@ export async function cancelSlot(
     return { slot: { ...slot, status: GUIDANCE_SLOT_STATUS.CANCELLED, cancel_reason: reason }, cancelledBooking };
   } catch (error) {
     logErrorLocation("guidanceSlotService.ts", "cancelSlot", error, "Error cancelling guidance slot", "", { slotSk, reason });
+    throw error;
+  }
+}
+
+/**
+ * Deletes every still-AVAILABLE (never booked) slot for a notification in
+ * one action — the common cleanup need once a notification's deadline has
+ * passed and its unused open slots are just clutter. Deliberately scoped to
+ * AVAILABLE only: booked/completed/already-cancelled slots need individual
+ * handling via cancelSlot() (a booked one has a real booking referencing it
+ * and triggers a user-facing cancellation email) — an available slot has
+ * neither, so there's nothing worth preserving by soft-cancelling it; a
+ * hard delete avoids leaving dead "cancelled" rows behind forever.
+ */
+export async function bulkCancelAvailableSlots(
+  notificationId: string,
+  callerSub?: string,
+  callerRole?: string
+): Promise<{ cancelledCount: number; failedCount: number }> {
+  try {
+    const ownerSub = callerRole === "admin" ? undefined : callerSub;
+    const { results: availableSlots } = await listSlotsForAdmin(
+      notificationId,
+      GUIDANCE_SLOT_STATUS.AVAILABLE,
+      500,
+      undefined,
+      ownerSub
+    );
+    const outcomes = await Promise.allSettled(
+      availableSlots.map((slot) => deleteDynamoDB(TABLE_PK_MAPPER.GuidanceSlot, slot.sk!))
+    );
+    const cancelledCount = outcomes.filter((o) => o.status === "fulfilled" && o.value === true).length;
+    return { cancelledCount, failedCount: availableSlots.length - cancelledCount };
+  } catch (error) {
+    logErrorLocation("guidanceSlotService.ts", "bulkCancelAvailableSlots", error, "Error bulk-deleting available slots", "", { notificationId });
     throw error;
   }
 }
