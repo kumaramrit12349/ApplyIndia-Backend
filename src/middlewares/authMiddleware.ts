@@ -308,6 +308,28 @@ export const authenticateTokenAndEmail = async (
 };
 
 /**
+ * Like authenticateToken, but never rejects the request. If a valid
+ * accessToken cookie is present, `req.user` is populated exactly the same
+ * way; if it's missing or invalid, the request simply proceeds unauthenticated
+ * (no req.user). For public endpoints that must work for both guests and
+ * logged-in visitors (e.g. Contact Us) while still being able to recognize a
+ * logged-in submitter.
+ */
+export const authenticateOptional = (req: any, _res: any, next: any) => {
+  const accessToken = req?.cookies?.accessToken;
+  if (!accessToken) return next();
+  jwt.verify(
+    accessToken,
+    getKey,
+    { algorithms: ["RS256"] },
+    (err: any, decoded: any) => {
+      if (!err) req.user = decoded;
+      next();
+    },
+  );
+};
+
+/**
  * Role guard middleware factory.
  * Usage: router.post("/add", requireRole("creator", "senior_reviewer", "admin"), handler)
  * Must be used AFTER authenticateTokenAndEmail.

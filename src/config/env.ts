@@ -41,6 +41,9 @@ export const COGNITO_CONFIG = {
 export const EMAIL_CONFIG = {
   senderAddress: process.env.SES_SENDER_EMAIL,
   region: process.env.AWS_REGION,
+  // Internal inbox notified on every new Contact Us submission — optional,
+  // the send is skipped (not an error) if unset.
+  contactNotificationAddress: process.env.CONTACT_NOTIFICATION_EMAIL,
 };
 
 // SQS queue URLs backing the notification delivery fan-out. Set by
