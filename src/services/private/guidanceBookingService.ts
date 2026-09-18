@@ -19,6 +19,7 @@ import { getUserProfile, getCognitoUserEmail } from "../authService";
 import { sendEmail } from "../external/emailService";
 import { renderEmailTemplate } from "./emailTemplateService";
 import { EMAIL_TEMPLATE_KEYS } from "../../db_schema/EmailTemplate/EmailTemplateConstant";
+import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { buildNotificationUrl } from "./notificationDistributionService";
 import { logErrorLocation } from "../../utils/errorUtils";
 
@@ -42,7 +43,7 @@ async function sendBookingConfirmationEmail(booking: IGuidanceBooking): Promise<
     );
     return;
   }
-  await sendEmail(booking.user_email, rendered.subject, rendered.html);
+  await sendEmail(booking.user_email, rendered.subject, rendered.html, EMAIL_CHANNEL.GUIDANCE);
 }
 
 async function getBookingBySk(bookingSk: string): Promise<IGuidanceBooking | null> {

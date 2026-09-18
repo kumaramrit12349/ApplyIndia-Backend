@@ -2,6 +2,7 @@ import { TABLE_PK_MAPPER } from "../db_schema/shared/SharedConstant";
 import { incrementDistributionChannelCounters } from "../Interpreter/dynamoDB/updateCalls";
 import { getDistributionSkFromId } from "../services/private/notificationDistributionService";
 import { sendEmail } from "../services/external/emailService";
+import { EMAIL_CHANNEL } from "../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { logErrorLocation } from "../utils/errorUtils";
 
 /**
@@ -65,7 +66,7 @@ export async function sendEmailJobBatch(records: SqsRecordLike[]): Promise<{ bat
   await runWithConcurrency(records, 3, async (record) => {
     try {
       const job: EmailJobMessage = JSON.parse(record.body);
-      const result = await sendEmail(job.to, job.subject, job.html);
+      const result = await sendEmail(job.to, job.subject, job.html, EMAIL_CHANNEL.NOTIFICATION);
 
       if (result.skipped) recordJobOutcome(deltasByNotificationId, job.notificationId, "skipped");
       else if (result.success) recordJobOutcome(deltasByNotificationId, job.notificationId, "sent");

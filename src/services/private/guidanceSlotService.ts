@@ -20,6 +20,7 @@ import { logErrorLocation } from "../../utils/errorUtils";
 import { getNotificationById } from "./notificationService";
 import { renderEmailTemplate } from "./emailTemplateService";
 import { EMAIL_TEMPLATE_KEYS } from "../../db_schema/EmailTemplate/EmailTemplateConstant";
+import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { buildNotificationUrl } from "./notificationDistributionService";
 
 const URL_REGEX = /^https?:\/\/.+/i;
@@ -44,7 +45,7 @@ async function sendAdminCancellationEmail(booking: IGuidanceBooking, startTime: 
     );
     return;
   }
-  await sendEmail(booking.user_email, rendered.subject, rendered.html);
+  await sendEmail(booking.user_email, rendered.subject, rendered.html, EMAIL_CHANNEL.GUIDANCE);
 }
 
 async function getSlotBySk(slotSk: string): Promise<IGuidanceSlot | null> {

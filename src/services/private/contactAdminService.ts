@@ -9,6 +9,7 @@ import { deleteDynamoDB } from "../../Interpreter/dynamoDB/deleteCalls";
 import { sendEmail } from "../external/emailService";
 import { renderEmailTemplate } from "./emailTemplateService";
 import { EMAIL_TEMPLATE_KEYS } from "../../db_schema/EmailTemplate/EmailTemplateConstant";
+import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { logErrorLocation } from "../../utils/errorUtils";
 
 export interface IListContactsForAdminOpts {
@@ -263,7 +264,7 @@ export async function sendContactReply(
         reply_message: body,
       });
       if (rendered) {
-        await sendEmail(contact.email, rendered.subject, rendered.html);
+        await sendEmail(contact.email, rendered.subject, rendered.html, EMAIL_CHANNEL.CONTACT_US);
       } else {
         logErrorLocation(
           "contactAdminService.ts",

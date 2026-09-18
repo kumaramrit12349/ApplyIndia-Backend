@@ -72,6 +72,7 @@ export const ALL_TABLE_NAMES = {
   GuidanceBooking: "GuidanceBooking",
   GuidanceFeedback: "GuidanceFeedback",
   Contact: "Contact",
+  PlatformSettings: "PlatformSettings",
 };
 
 export const TABLE_PK_MAPPER = {
@@ -84,6 +85,7 @@ export const TABLE_PK_MAPPER = {
   GuidanceBooking: "GuidanceBooking#",
   GuidanceFeedback: "GuidanceFeedback#",
   Contact: "Contact#",
+  PlatformSettings: "PlatformSettings#",
 };
 
 export const INSERT_ITEM_MAPPER = {

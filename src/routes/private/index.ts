@@ -10,6 +10,7 @@ import openNotificationsRoutes from "./openNotifications"
 import guidanceBookingRoutes from "./guidanceBooking"
 import guidanceAdminRoutes from "./guidanceAdmin"
 import contactAdminRoutes from "./contactAdmin"
+import platformSettingsRoutes from "./platformSettings"
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use("/open-notifications", openNotificationsRoutes);
 router.use("/guidance", guidanceBookingRoutes);
 router.use("/guidance-admin", guidanceAdminRoutes);
 router.use("/contact", contactAdminRoutes);
+router.use("/platform-settings", platformSettingsRoutes);
 
 export default router;

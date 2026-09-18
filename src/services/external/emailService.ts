@@ -3,19 +3,29 @@ import { sesClient } from "../../aws/ses.client";
 import { EMAIL_CONFIG } from "../../config/env";
 import { logErrorLocation } from "../../utils/errorUtils";
 import { IExternalSendResult } from "./types";
+import { isEmailChannelEnabled } from "../private/platformSettingsService";
+import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 
 /**
  * Sends an email via AWS SES. Requires SES_SENDER_EMAIL to be a
  * SES-verified sender identity (verify it in the SES console for the
  * configured AWS_REGION) — otherwise SES will reject the send.
- * No-ops (skipped) if EMAIL_CONFIG.senderAddress isn't set.
+ * No-ops (skipped) if EMAIL_CONFIG.senderAddress isn't set, or if the admin
+ * has switched off email communication for `channel` (or the platform-wide
+ * master switch) — this is the single choke point every outgoing email in
+ * the app goes through, and `channel` is required so a new call site can't
+ * be added without deciding which toggle governs it.
  */
 export async function sendEmail(
   to: string,
   subject: string,
-  html: string
+  html: string,
+  channel: EMAIL_CHANNEL
 ): Promise<IExternalSendResult> {
   if (!EMAIL_CONFIG.senderAddress) {
+    return { success: false, skipped: true };
+  }
+  if (!(await isEmailChannelEnabled(channel))) {
     return { success: false, skipped: true };
   }
   try {

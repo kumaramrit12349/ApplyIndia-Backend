@@ -15,6 +15,7 @@ import { getUserProfile, getCognitoUserEmail } from "../authService";
 import { sendEmail } from "../external/emailService";
 import { renderEmailTemplate } from "../private/emailTemplateService";
 import { EMAIL_TEMPLATE_KEYS } from "../../db_schema/EmailTemplate/EmailTemplateConstant";
+import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { EMAIL_CONFIG } from "../../config/env";
 import { logErrorLocation } from "../../utils/errorUtils";
 
@@ -91,7 +92,7 @@ async function sendInternalNotification(contact: IContact): Promise<void> {
 
   const rendered = await renderEmailTemplate(EMAIL_TEMPLATE_KEYS.CONTACT_ADMIN_NOTIFY, vars);
   if (rendered) {
-    await sendEmail(EMAIL_CONFIG.contactNotificationAddress, rendered.subject, rendered.html);
+    await sendEmail(EMAIL_CONFIG.contactNotificationAddress, rendered.subject, rendered.html, EMAIL_CHANNEL.CONTACT_US);
     return;
   }
 
@@ -104,7 +105,7 @@ async function sendInternalNotification(contact: IContact): Promise<void> {
     <strong>Reference:</strong> ${contact.reference_id}</p>
     <p>${contact.message}</p>
   `;
-  await sendEmail(EMAIL_CONFIG.contactNotificationAddress, subject, html);
+  await sendEmail(EMAIL_CONFIG.contactNotificationAddress, subject, html, EMAIL_CHANNEL.CONTACT_US);
 }
 
 async function sendConfirmationEmail(contact: IContact): Promise<void> {
@@ -127,7 +128,7 @@ async function sendConfirmationEmail(contact: IContact): Promise<void> {
     );
     return;
   }
-  await sendEmail(contact.email, rendered.subject, rendered.html);
+  await sendEmail(contact.email, rendered.subject, rendered.html, EMAIL_CHANNEL.CONTACT_US);
 }
 
 /**
