@@ -24,8 +24,7 @@ const TOPIC_PATTERNS: [string, RegExp][] = [
 
 /**
  * Best-effort keyword matcher inferring which subscription topics a
- * notification belongs to, from its title/department text. Mirrors the
- * style of inferCategory/inferState in src/scraper/normalizer.ts. Unlike
+ * notification belongs to, from its title/department text. Unlike
  * category, a notification can match multiple topics.
  */
 export function inferTopics(title: string, department?: string): string[] {

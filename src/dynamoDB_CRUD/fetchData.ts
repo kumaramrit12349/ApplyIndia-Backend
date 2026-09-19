@@ -128,21 +128,53 @@ export async function queryItemsWithLimitDynamoDB<T>(
       queryPrams.ExpressionAttributeValues,
     );
     const accumulated: T[] = [];
-    const params: QueryCommandInput = {
-      ...queryPrams,
-      Limit: limit,
-      ExclusiveStartKey: startKey ? marshall(startKey) : undefined,
-    };
-    const result = await dynamoDBClient.send(new QueryCommand(params));
-    if (result?.Items) {
-      result.Items?.forEach((item) => {
-        accumulated.push(unmarshall(item) as T);
-      });
-    }
+    // DynamoDB's `Limit` caps items READ before FilterExpression is applied,
+    // not items returned after it — a single Query call can legitimately
+    // come back with zero results even though real matches exist further
+    // into the partition, if none of the raw items it happened to read this
+    // time passed the filter. A single-shot call (the old behavior here)
+    // would silently under-return or return empty for any caller combining
+    // a FilterExpression with Limit — which every caller of this function
+    // does. Loop — following ExclusiveStartKey — until either enough
+    // filtered results have been collected or the partition is genuinely
+    // exhausted, matching how queryItemsFromDynamoDB (above) already handles
+    // its own unbounded version of this same problem.
+    // MAX_ITERATIONS bounds the worst case (e.g. a search matching nothing
+    // across a huge, ever-growing partition) so one request can't scan
+    // indefinitely — it'll stop and hand back whatever lastEvaluatedKey it
+    // reached, letting the caller page further via a follow-up request
+    // instead of one request scanning forever.
+    const MAX_ITERATIONS = 25;
+    let exclusiveStartKey: Record<string, any> | undefined = startKey
+      ? marshall(startKey)
+      : undefined;
+    let iterations = 0;
+    do {
+      const params: QueryCommandInput = {
+        ...queryPrams,
+        Limit: limit,
+        ExclusiveStartKey: exclusiveStartKey,
+      };
+      const result = await dynamoDBClient.send(new QueryCommand(params));
+      if (result?.Items) {
+        result.Items.forEach((item) => {
+          accumulated.push(unmarshall(item) as T);
+        });
+      }
+      // Already in raw (marshalled) AttributeValue form straight from the
+      // SDK response — reusable as-is for the next iteration's
+      // ExclusiveStartKey, and unmarshalled once at the very end below.
+      exclusiveStartKey = result.LastEvaluatedKey;
+      iterations++;
+    } while (
+      accumulated.length < limit &&
+      exclusiveStartKey &&
+      iterations < MAX_ITERATIONS
+    );
     return {
       results: accumulated,
-      lastEvaluatedKey: result.LastEvaluatedKey
-        ? (unmarshall(result.LastEvaluatedKey) as { pk: string; sk: string })
+      lastEvaluatedKey: exclusiveStartKey
+        ? (unmarshall(exclusiveStartKey) as { pk: string; sk: string })
         : undefined,
     };
   } catch (error) {

@@ -6,7 +6,7 @@ const APP_ENV = process.env.APP_ENV || "local";
 // resolve correct env file
 const envPath = path.resolve(__dirname, `../env/${APP_ENV}.env`);
 // load env file
-dotenv.config({ path: envPath });
+dotenv.config({ path: envPath, quiet: true });
 // ====== CONFIGS ======
 
 export const ENV = {
@@ -41,6 +41,9 @@ export const COGNITO_CONFIG = {
 export const EMAIL_CONFIG = {
   senderAddress: process.env.SES_SENDER_EMAIL,
   region: process.env.AWS_REGION,
+  // Internal inbox notified on every new Contact Us submission — optional,
+  // the send is skipped (not an error) if unset.
+  contactNotificationAddress: process.env.CONTACT_NOTIFICATION_EMAIL,
 };
 
 // SQS queue URLs backing the notification delivery fan-out. Set by

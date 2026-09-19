@@ -12,6 +12,7 @@ import {
   seedDefaultAdminRoles,
 } from "../services/private/adminRoleService";
 import { getNotificationById } from "../services/private/notificationService";
+import { refreshSession } from "../services/authService";
 
 const client = jwksClient({
   jwksUri: `https://cognito-idp.${COGNITO_CONFIG.region}.amazonaws.com/${COGNITO_CONFIG.userPoolId}/.well-known/jwks.json`,
@@ -219,10 +220,65 @@ export function permissionsAllowNotification(
   return true;
 }
 
+/* ======================== SESSION REFRESH ======================== */
+
+/** Refresh-token cookie lifetime — how long a visitor stays signed in without re-entering their password. Must not exceed the Cognito app client's "Refresh token expiration" setting. */
+export const REFRESH_TOKEN_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+
+/** Treat a token as expired slightly early so it doesn't lapse mid-request. */
+const TOKEN_EXPIRY_SKEW_SECONDS = 60;
+
+// Concurrent requests (e.g. several API calls fired on page load) share one
+// Cognito refresh call per refresh token instead of each making their own.
+const inFlightRefreshes = new Map<string, ReturnType<typeof refreshSession>>();
+
+function isTokenFresh(token: string | undefined): boolean {
+  if (!token) return false;
+  const decoded: any = jwt.decode(token);
+  return !!decoded?.exp && decoded.exp > Date.now() / 1000 + TOKEN_EXPIRY_SKEW_SECONDS;
+}
+
+/**
+ * If the given token cookie is missing or (nearly) expired but a refresh
+ * token cookie is present, silently exchange it for a fresh access + id
+ * token: sets the new cookies on the response AND updates req.cookies, so
+ * the normal verify logic right after this sees the fresh token as if the
+ * browser had sent it. Never throws — if the refresh fails (refresh token
+ * expired/revoked), the request simply continues and gets its usual 401.
+ */
+async function refreshSessionIfNeeded(req: any, res: any, tokenCookie: "accessToken" | "idToken"): Promise<void> {
+  const refreshToken = req?.cookies?.refreshToken;
+  if (!refreshToken || isTokenFresh(req?.cookies?.[tokenCookie])) return;
+
+  let pending = inFlightRefreshes.get(refreshToken);
+  if (!pending) {
+    pending = refreshSession(refreshToken).finally(() => inFlightRefreshes.delete(refreshToken));
+    inFlightRefreshes.set(refreshToken, pending);
+  }
+  const tokens = await pending;
+  if (!tokens) return;
+
+  const isProd = process.env.RUNTIME_ENV === "lambda";
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+    maxAge: 60 * 60 * 1000,
+    path: "/",
+  };
+  res.cookie("accessToken", tokens.AccessToken, cookieOptions);
+  req.cookies.accessToken = tokens.AccessToken;
+  if (tokens.IdToken) {
+    res.cookie("idToken", tokens.IdToken, cookieOptions);
+    req.cookies.idToken = tokens.IdToken;
+  }
+}
+
 /* ======================== MIDDLEWARE ======================== */
 
 // For protecting APIs with the access token
-export const authenticateToken = (req: any, res: any, next: any) => {
+export const authenticateToken = async (req: any, res: any, next: any) => {
+  await refreshSessionIfNeeded(req, res, "accessToken");
   const accessToken = req?.cookies?.accessToken;
   if (!accessToken) {
     return res.status(401).json({ error: "Access denied" });
@@ -243,7 +299,8 @@ export const authenticateToken = (req: any, res: any, next: any) => {
 };
 
 // authMiddleware.ts (same file)
-export const authenticateMe = (req: any, res: any, next: any) => {
+export const authenticateMe = async (req: any, res: any, next: any) => {
+  await refreshSessionIfNeeded(req, res, "idToken");
   const idToken = req?.cookies?.idToken;
   if (!idToken) {
     return res.status(401).json({ error: "Access denied" });
@@ -272,6 +329,7 @@ export const authenticateTokenAndEmail = async (
   res: any,
   next: any
 ) => {
+  await refreshSessionIfNeeded(req, res, "accessToken");
   const accessToken = req?.cookies?.accessToken;
   if (!accessToken) {
     return res.status(401).json({ error: "Access denied" });
@@ -302,6 +360,29 @@ export const authenticateTokenAndEmail = async (
       req.user = decoded;
       req.adminRole = role;
       req.adminPermissions = permissions;
+      next();
+    },
+  );
+};
+
+/**
+ * Like authenticateToken, but never rejects the request. If a valid
+ * accessToken cookie is present, `req.user` is populated exactly the same
+ * way; if it's missing or invalid, the request simply proceeds unauthenticated
+ * (no req.user). For public endpoints that must work for both guests and
+ * logged-in visitors (e.g. Contact Us) while still being able to recognize a
+ * logged-in submitter.
+ */
+export const authenticateOptional = async (req: any, res: any, next: any) => {
+  await refreshSessionIfNeeded(req, res, "accessToken");
+  const accessToken = req?.cookies?.accessToken;
+  if (!accessToken) return next();
+  jwt.verify(
+    accessToken,
+    getKey,
+    { algorithms: ["RS256"] },
+    (err: any, decoded: any) => {
+      if (!err) req.user = decoded;
       next();
     },
   );

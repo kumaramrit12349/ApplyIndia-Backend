@@ -188,12 +188,7 @@ export async function seedDefaultAdminRoles(): Promise<void> {
         continue;
       }
 
-      if (user.admin_role) {
-        console.log(
-          `[SeedAdminRoles] User ${email} already has role "${user.admin_role}", skipping.`
-        );
-        continue;
-      }
+      if (user.admin_role) continue;
 
       const permissions: IAdminPermissions = {
         categories: ["all"],

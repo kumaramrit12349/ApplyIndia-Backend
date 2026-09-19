@@ -13,7 +13,7 @@ import {
   getNotificationPreferences,
   updateNotificationPreferences,
 } from "../services/authService";
-import { authenticateMe, getAdminRole, getAdminPermissions } from "../middlewares/authMiddleware";
+import { authenticateMe, getAdminRole, getAdminPermissions, REFRESH_TOKEN_COOKIE_MAX_AGE } from "../middlewares/authMiddleware";
 import { IErrorWithDetails, IResponse, ISignUpRes, RegisterRequest } from "../db_schema/Cognito/CongnitoInterface";
 import { COGNITO_CONFIG } from "../config/env";
 
@@ -95,7 +95,7 @@ router.post("/signin", async (req: Request, res: Response) => {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? "none" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
         path: "/",
       });
     }
@@ -460,7 +460,7 @@ router.get("/google/callback", async (req: Request, res: Response) => {
         httpOnly: true,
         secure: isProd,
         sameSite: isProd ? "lax" : "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
         path: "/",
       });
     }

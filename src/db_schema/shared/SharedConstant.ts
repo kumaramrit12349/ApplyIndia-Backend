@@ -64,26 +64,26 @@ export const REF_PROPERTIES = {
 
 export const ALL_TABLE_NAMES = {
   Notification: "Notification",
-  Feedback: "Feedback",
   User: "User",
-  Site: "Site",
   EmailTemplate: "EmailTemplate",
   SocialPost: "SocialPost",
   GuidanceSlot: "GuidanceSlot",
   GuidanceBooking: "GuidanceBooking",
   GuidanceFeedback: "GuidanceFeedback",
+  Contact: "Contact",
+  PlatformSettings: "PlatformSettings",
 };
 
 export const TABLE_PK_MAPPER = {
   Notification: "Notification#",
-  Feedback: "Feedback#",
   User: "User#",
-  Site: "Site#",
   EmailTemplate: "EmailTemplate#",
   SocialPost: "SocialPost#",
   GuidanceSlot: "GuidanceSlot#",
   GuidanceBooking: "GuidanceBooking#",
   GuidanceFeedback: "GuidanceFeedback#",
+  Contact: "Contact#",
+  PlatformSettings: "PlatformSettings#",
 };
 
 export const INSERT_ITEM_MAPPER = {

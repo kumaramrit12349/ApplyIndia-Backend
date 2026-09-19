@@ -44,20 +44,14 @@ export const INDIAN_STATES: { value: string; label: string }[] = [
 ];
 
 /**
- * Notifications end up with state stored in inconsistent formats depending
- * on how they were created:
- * - Admin-created: the INDIAN_STATES code, e.g. "BR" (from the dropdown).
- * - Scraper-created (src/scraper/normalizer.ts inferState): a lowercase,
- *   hyphenated slug of the state's English name, e.g. "bihar", "uttar-pradesh",
- *   or the literal word "central" for Central Government.
- *
- * This resolves any of those forms to the canonical INDIAN_STATES code, so
- * state comparisons (personalized home feed, eligibility domicile check)
- * work regardless of which path created the record.
+ * Resolves a state value — the INDIAN_STATES code (e.g. "BR"), or the state's
+ * English name (e.g. "Bihar") — to the canonical INDIAN_STATES code, so state
+ * comparisons (personalized home feed, eligibility domicile check) work
+ * regardless of which form the record stores.
  */
 export function resolveStateCode(raw?: string | null): string | undefined {
   if (!raw) return undefined;
-  const normalized = raw.trim().toLowerCase().replace(/-/g, " ");
+  const normalized = raw.trim().toLowerCase();
   const match = INDIAN_STATES.find(
     (s) => s.value.toLowerCase() === normalized || s.label.toLowerCase() === normalized
   );

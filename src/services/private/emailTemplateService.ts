@@ -1,4 +1,4 @@
-import { fetchDynamoDB } from "../../Interpreter/dynamoDB/fetchCalls";
+import { fetchDynamoDB, fetchDynamoDBWithLimit } from "../../Interpreter/dynamoDB/fetchCalls";
 import { insertDataDynamoDB } from "../../Interpreter/dynamoDB/insertCalls";
 import { updateDynamoDB } from "../../Interpreter/dynamoDB/updateCalls";
 import { deleteDynamoDB } from "../../Interpreter/dynamoDB/deleteCalls";
@@ -8,10 +8,13 @@ import { COGNITO_CONFIG } from "../../config/env";
 import { logErrorLocation } from "../../utils/errorUtils";
 
 /**
- * Fetch all email templates.
+ * One page of email templates (cursor-based, for the admin list's infinite scroll).
  */
-export async function getAllEmailTemplates(): Promise<IEmailTemplate[]> {
-  return fetchDynamoDB<IEmailTemplate>(ALL_TABLE_NAMES.EmailTemplate, undefined, ["*"]);
+export async function listEmailTemplates(
+  limit: number,
+  startKey?: Record<string, any>
+): Promise<{ results: IEmailTemplate[]; lastEvaluatedKey?: { pk: string; sk: string } }> {
+  return fetchDynamoDBWithLimit<IEmailTemplate>(ALL_TABLE_NAMES.EmailTemplate, limit, startKey, ["*"]);
 }
 
 /**
