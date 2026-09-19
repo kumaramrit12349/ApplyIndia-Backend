@@ -22,6 +22,8 @@ import { renderEmailTemplate } from "./emailTemplateService";
 import { EMAIL_TEMPLATE_KEYS } from "../../db_schema/EmailTemplate/EmailTemplateConstant";
 import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { buildNotificationUrl } from "./notificationDistributionService";
+import { APP_TIME_ZONE } from "../../config/env";
+import { upperAmPm } from "../../utils/dateUtils";
 
 const URL_REGEX = /^https?:\/\/.+/i;
 
@@ -29,8 +31,8 @@ async function sendAdminCancellationEmail(booking: IGuidanceBooking, startTime: 
   const rendered = await renderEmailTemplate(EMAIL_TEMPLATE_KEYS.GUIDANCE_SLOT_CANCELLED, {
     user_name: booking.user_name || "there",
     notification_title: booking.notification_title,
-    date: new Date(startTime).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-    time: new Date(startTime).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }),
+    date: new Date(startTime).toLocaleDateString("en-IN", { timeZone: APP_TIME_ZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+    time: upperAmPm(new Date(startTime).toLocaleTimeString("en-IN", { timeZone: APP_TIME_ZONE, hour: "numeric", minute: "2-digit" })),
     reason: reason || "an unforeseen scheduling conflict",
     reschedule_url: buildNotificationUrl(booking.notification_title, booking.notification_id),
   });

@@ -42,6 +42,9 @@ provider:
     # Notification distribution — all optional, default empty so deploys
     # don't fail if they're not set in the deploy environment.
     SES_SENDER_EMAIL: ${env:SES_SENDER_EMAIL, 'support@applyindia.online'}
+    # Inbox that gets an alert for every new Contact Us submission. Without
+    # this the alert is silently skipped (see contactService.ts).
+    CONTACT_NOTIFICATION_EMAIL: ${env:CONTACT_NOTIFICATION_EMAIL, 'support@applyindia.online'}
     # Notification delivery fan-out queues (see resources: below) — Refs to
     # CloudFormation resources in this same template, not env-var overrides.
     NOTIFICATION_FANOUT_QUEUE_URL: !Ref NotificationFanoutQueue

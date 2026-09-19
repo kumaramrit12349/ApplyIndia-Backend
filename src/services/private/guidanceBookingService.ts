@@ -22,13 +22,15 @@ import { EMAIL_TEMPLATE_KEYS } from "../../db_schema/EmailTemplate/EmailTemplate
 import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { buildNotificationUrl } from "./notificationDistributionService";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { APP_TIME_ZONE } from "../../config/env";
+import { upperAmPm } from "../../utils/dateUtils";
 
 async function sendBookingConfirmationEmail(booking: IGuidanceBooking): Promise<void> {
   const rendered = await renderEmailTemplate(EMAIL_TEMPLATE_KEYS.GUIDANCE_BOOKING_CONFIRMED, {
     user_name: booking.user_name || "there",
     notification_title: booking.notification_title,
-    date: new Date(booking.slot_start_time).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-    time: new Date(booking.slot_start_time).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }),
+    date: new Date(booking.slot_start_time).toLocaleDateString("en-IN", { timeZone: APP_TIME_ZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+    time: upperAmPm(new Date(booking.slot_start_time).toLocaleTimeString("en-IN", { timeZone: APP_TIME_ZONE, hour: "numeric", minute: "2-digit" })),
     meet_link: booking.meet_link,
     notification_url: buildNotificationUrl(booking.notification_title, booking.notification_id),
   });
@@ -258,6 +260,10 @@ export async function listMyBookings(
 export async function listBookingsForAdmin(opts: {
   notificationId?: string;
   status?: string;
+  /** Epoch ms lower bound on the session's start time (inclusive). */
+  slotDateFrom?: number;
+  /** Epoch ms upper bound (exclusive) — only applied together with slotDateFrom, giving one day's window. */
+  slotDateTo?: number;
   limit: number;
   startKey?: Record<string, any>;
   ownerSub?: string;
@@ -272,6 +278,18 @@ export async function listBookingsForAdmin(opts: {
     if (opts.status) {
       queryFilter.status = opts.status;
       clauses.push("#status = :status");
+    }
+    if (opts.slotDateFrom !== undefined) {
+      // The upper bound is nested here on purpose: #slot_start_time only gets
+      // a name mapping when "slot_start_time" is a queryFilter key, so the
+      // second clause can only ever ride along with the first (same pattern
+      // as the Contact list's date range).
+      queryFilter.slot_start_time = opts.slotDateFrom;
+      clauses.push("#slot_start_time >= :slot_start_time");
+      if (opts.slotDateTo !== undefined) {
+        queryFilter.slot_date_to = opts.slotDateTo;
+        clauses.push("#slot_start_time < :slot_date_to");
+      }
     }
     // A Guidance Partner only ever sees bookings for slots they created
     // themselves — Admin passes no ownerSub and sees everyone's.

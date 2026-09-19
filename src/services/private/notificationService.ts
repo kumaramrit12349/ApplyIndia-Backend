@@ -28,6 +28,7 @@ import { getUserProfile, getCognitoUserEmail } from "../authService";
 import { SendMessageCommand } from "@aws-sdk/client-sqs";
 import { sqsClient } from "../../aws/sqs.client";
 import { QUEUE_CONFIG } from "../../config/env";
+import { isYouTubeUrl } from "../../utils/urlUtils";
 
 const URL_FIELDS = [
   "youtube_link",
@@ -902,6 +903,9 @@ export async function markGuidanceAvailable(
     }
     if (available && (!guidanceLink || !guidanceLink.trim())) {
       throw new Error("A guidance video URL is required to mark guidance available");
+    }
+    if (available && guidanceLink && !isYouTubeUrl(guidanceLink)) {
+      throw new Error("The guidance video URL must be a valid YouTube link");
     }
     const attributesToUpdate = available
       ? {
