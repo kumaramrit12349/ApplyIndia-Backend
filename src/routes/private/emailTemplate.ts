@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { authenticateTokenAndEmail, requireRole } from "../../middlewares/authMiddleware";
 import {
-  getAllEmailTemplates,
+  listEmailTemplates,
   getEmailTemplate,
   createEmailTemplate,
   updateEmailTemplate,
@@ -17,12 +17,23 @@ router.use(authenticateTokenAndEmail);
 
 /**
  * GET /api/email-templates
- * List all email templates. Role: admin only (system-wide email content).
+ * List email templates, one page at a time. Query: limit (default 20, max 100),
+ * startKey (JSON-encoded lastEvaluatedKey from the previous page).
+ * Role: admin only (system-wide email content).
  */
-router.get("/", requireRole("admin"), async (_req, res) => {
+router.get("/", requireRole("admin"), async (req, res) => {
   try {
-    const templates = await getAllEmailTemplates();
-    res.json({ success: true, templates });
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit), 10) || 20, 1), 100);
+    let startKey: Record<string, any> | undefined;
+    if (typeof req.query.startKey === "string" && req.query.startKey) {
+      try {
+        startKey = JSON.parse(req.query.startKey);
+      } catch {
+        return res.status(400).json({ success: false, error: "Invalid startKey" });
+      }
+    }
+    const { results, lastEvaluatedKey } = await listEmailTemplates(limit, startKey);
+    res.json({ success: true, templates: results, lastEvaluatedKey });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || "Failed to fetch email templates" });
   }
