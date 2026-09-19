@@ -71,10 +71,8 @@ export async function getHomePageNotifications(stateFilter?: string): Promise<
 
     // Personalize by state: Central is always included; a specific state
     // adds that state's notifications too; "all" disables filtering.
-    // Notification state values are inconsistent (admin-created uses the
-    // INDIAN_STATES code like "BR"; scraper-created uses a lowercase slug
-    // like "bihar" or "central" — see resolveStateCode), so both sides of
-    // the comparison are canonicalized to the same code first.
+    // Both sides of the comparison are canonicalized to the same
+    // INDIAN_STATES code first (see resolveStateCode).
     const isAllStates = stateFilter?.trim().toLowerCase() === "all";
     const requestedCode = isAllStates ? undefined : resolveStateCode(stateFilter);
     const scoped = isAllStates

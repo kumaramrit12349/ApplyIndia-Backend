@@ -46,10 +46,6 @@ export interface INotification {
   /** When true (the default), approving this notification triggers a Telegram channel post. */
   send_telegram_notification?: boolean;
 
-  /* Scraper */
-  source_url?: string;   // canonical URL of the scraped listing page
-  scraped_from?: string; // human-readable site name, e.g. "Sarkari Result"
-
   /* Aggregate user activity counts (maintained by userActivityService) */
   count_wishlisted?: number;
   count_applied?: number;

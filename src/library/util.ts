@@ -29,8 +29,6 @@ export function buildNotificationDetail(items: any[]): any {
         has_answer_key: item?.has_answer_key,
         is_archived: item.is_archived,
         review_status: item.review_status,
-        source_url: item.source_url,
-        scraped_from: item.scraped_from,
         send_email_notification: item.send_email_notification,
         send_telegram_notification: item.send_telegram_notification,
         created_at: item.created_at,

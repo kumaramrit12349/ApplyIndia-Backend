@@ -65,7 +65,6 @@ export const REF_PROPERTIES = {
 export const ALL_TABLE_NAMES = {
   Notification: "Notification",
   User: "User",
-  Site: "Site",
   EmailTemplate: "EmailTemplate",
   SocialPost: "SocialPost",
   GuidanceSlot: "GuidanceSlot",
@@ -78,7 +77,6 @@ export const ALL_TABLE_NAMES = {
 export const TABLE_PK_MAPPER = {
   Notification: "Notification#",
   User: "User#",
-  Site: "Site#",
   EmailTemplate: "EmailTemplate#",
   SocialPost: "SocialPost#",
   GuidanceSlot: "GuidanceSlot#",

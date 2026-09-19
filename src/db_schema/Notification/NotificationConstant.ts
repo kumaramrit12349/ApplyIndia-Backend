@@ -31,8 +31,6 @@ export const NOTIFICATION = {
   created_by: "created_by",
   send_email_notification: "send_email_notification",
   send_telegram_notification: "send_telegram_notification",
-  source_url: "source_url",
-  scraped_from: "scraped_from",
 
   count_wishlisted: "count_wishlisted",
   count_applied: "count_applied",

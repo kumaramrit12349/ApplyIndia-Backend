@@ -195,9 +195,6 @@ export async function addCompleteNotification(data: INotification) {
       categorySk: `${now}#${paddedLastDate}`,
       statePk: `${normalizedState}${NOTIFICATION_TYPE_MAPPER.META}`,
       stateSk: `${now}#${paddedLastDate}`,
-      // Scraper provenance (undefined for manual entries)
-      ...(data.source_url && { source_url: data.source_url }),
-      ...(data.scraped_from && { scraped_from: data.scraped_from }),
     };
     const detailsItem = {
       ...base,
