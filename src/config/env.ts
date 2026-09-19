@@ -1,6 +1,13 @@
 import dotenv from "dotenv";
 import path from "path";
 
+// The platform serves India only, and Lambda runs in UTC — so pin the
+// process to IST. This makes every local-time Date call (day boundaries for
+// "today/yesterday" filters, reference-ID dates, age calculation, formatted
+// email times) follow Indian time no matter where the code runs.
+export const APP_TIME_ZONE = "Asia/Kolkata";
+process.env.TZ = APP_TIME_ZONE;
+
 // decide env (priority order)
 const APP_ENV = process.env.APP_ENV || "local";
 // resolve correct env file

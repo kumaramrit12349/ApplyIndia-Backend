@@ -7,6 +7,7 @@ import { NOTIFICATION_TYPE_MAPPER } from "../../db_schema/Notification/Notificat
 import { getItemFromDynamoDB } from "../../dynamoDB_CRUD/fetchData";
 import { DYNAMODB_CONFIG, COGNITO_CONFIG } from "../../config/env";
 import { inferTopics } from "../../utils/topicUtils";
+import { APP_TIME_ZONE } from "../../config/env";
 
 /**
  * Shared building blocks for notification email distribution, used by the
@@ -82,7 +83,7 @@ export function formatLastDateToApply(value?: string): string {
   if (/^\d+$/.test(value)) {
     const date = new Date(Number(value));
     if (!isNaN(date.getTime())) {
-      return date.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
+      return date.toLocaleDateString("en-IN", { timeZone: APP_TIME_ZONE, year: "numeric", month: "short", day: "numeric" });
     }
   }
   return value;

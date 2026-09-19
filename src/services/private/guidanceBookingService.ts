@@ -22,13 +22,15 @@ import { EMAIL_TEMPLATE_KEYS } from "../../db_schema/EmailTemplate/EmailTemplate
 import { EMAIL_CHANNEL } from "../../db_schema/PlatformSettings/PlatformSettingsConstant";
 import { buildNotificationUrl } from "./notificationDistributionService";
 import { logErrorLocation } from "../../utils/errorUtils";
+import { APP_TIME_ZONE } from "../../config/env";
+import { upperAmPm } from "../../utils/dateUtils";
 
 async function sendBookingConfirmationEmail(booking: IGuidanceBooking): Promise<void> {
   const rendered = await renderEmailTemplate(EMAIL_TEMPLATE_KEYS.GUIDANCE_BOOKING_CONFIRMED, {
     user_name: booking.user_name || "there",
     notification_title: booking.notification_title,
-    date: new Date(booking.slot_start_time).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
-    time: new Date(booking.slot_start_time).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }),
+    date: new Date(booking.slot_start_time).toLocaleDateString("en-IN", { timeZone: APP_TIME_ZONE, weekday: "long", day: "numeric", month: "long", year: "numeric" }),
+    time: upperAmPm(new Date(booking.slot_start_time).toLocaleTimeString("en-IN", { timeZone: APP_TIME_ZONE, hour: "numeric", minute: "2-digit" })),
     meet_link: booking.meet_link,
     notification_url: buildNotificationUrl(booking.notification_title, booking.notification_id),
   });
