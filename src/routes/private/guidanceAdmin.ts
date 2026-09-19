@@ -118,13 +118,15 @@ router.post("/slots/bulk-delete", async (req, res) => {
   }
 });
 
-// POST /api/guidance-admin/bookings/list  { notificationId?, status?, limit?, startKey? }
+// POST /api/guidance-admin/bookings/list  { notificationId?, status?, slotDateFrom?, slotDateTo?, limit?, startKey? }
 router.post("/bookings/list", async (req, res) => {
   try {
     const { notificationId, status, limit = 30, startKey } = req.body;
+    const slotDateFrom = Number.isFinite(Number(req.body.slotDateFrom)) && req.body.slotDateFrom !== undefined ? Number(req.body.slotDateFrom) : undefined;
+    const slotDateTo = Number.isFinite(Number(req.body.slotDateTo)) && req.body.slotDateTo !== undefined ? Number(req.body.slotDateTo) : undefined;
     const callerRole = (req as any).adminRole;
     const ownerSub = callerRole === "admin" ? undefined : (req as any).user?.sub;
-    const data = await listBookingsForAdmin({ notificationId, status, limit, startKey, ownerSub });
+    const data = await listBookingsForAdmin({ notificationId, status, slotDateFrom, slotDateTo, limit, startKey, ownerSub });
     res.json({ success: true, ...data });
   } catch (error) {
     respondError(res, error, "Failed to list bookings");
