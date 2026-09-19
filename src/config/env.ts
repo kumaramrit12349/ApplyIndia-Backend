@@ -6,7 +6,7 @@ const APP_ENV = process.env.APP_ENV || "local";
 // resolve correct env file
 const envPath = path.resolve(__dirname, `../env/${APP_ENV}.env`);
 // load env file
-dotenv.config({ path: envPath });
+dotenv.config({ path: envPath, quiet: true });
 // ====== CONFIGS ======
 
 export const ENV = {

@@ -495,7 +495,11 @@ export async function getCognitoUserSubByEmail(email: string): Promise<string | 
       Filter: `email = "${email}"`,
     });
     const res = await cognito.send(cmd);
-    return res.Users?.[0]?.Username;
+    const user = res.Users?.[0];
+    // Return the real `sub` attribute, not `Username`: for federated (Google)
+    // accounts Username is "google_<id>", while DynamoDB User# rows are keyed
+    // by the sub. Username only equals the sub for native email/password users.
+    return user?.Attributes?.find((a) => a.Name === "sub")?.Value ?? user?.Username;
   } catch (error) {
     console.error("getCognitoUserSubByEmail - ListUsers failed:", error);
     return undefined;
