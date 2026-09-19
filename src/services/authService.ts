@@ -170,6 +170,37 @@ export async function signUpUser(data: RegisterRequest) {
   }
 }
 
+/**
+ * Exchanges a still-valid refresh token for a fresh access + id token —
+ * lets a session outlive the 1-hour token lifetime without re-entering the
+ * password. Returns null (never throws) if the refresh token is expired,
+ * revoked, or otherwise rejected, so callers can simply treat the visitor
+ * as signed out. Cognito doesn't rotate the refresh token on this call, so
+ * the existing refreshToken cookie stays valid.
+ */
+export async function refreshSession(
+  refreshToken: string
+): Promise<{ AccessToken: string; IdToken?: string } | null> {
+  try {
+    const response = await cognito.send(
+      new InitiateAuthCommand({
+        AuthFlow: AuthFlowType.REFRESH_TOKEN_AUTH,
+        ClientId: process.env.COGNITO_CLIENT_ID!,
+        AuthParameters: { REFRESH_TOKEN: refreshToken },
+      })
+    );
+    const result = response.AuthenticationResult;
+    if (!result?.AccessToken) return null;
+    return { AccessToken: result.AccessToken, IdToken: result.IdToken };
+  } catch (error: any) {
+    // NotAuthorizedException = refresh token expired/revoked — an expected way for a session to end.
+    if (error?.name !== "NotAuthorizedException") {
+      logErrorLocation("authService.ts", "refreshSession", error, "AWS Cognito token refresh error", "", {});
+    }
+    return null;
+  }
+}
+
 export async function signInUser(email: string, password: string) {
   if (!email || !password) {
     createThrowError(400, "BadRequest", "Email and password required", {
