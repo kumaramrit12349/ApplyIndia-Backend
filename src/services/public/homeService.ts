@@ -263,6 +263,7 @@ export async function getNotificationsByCategory(
           NOTIFICATION.created_at,
           NOTIFICATION.category,
           NOTIFICATION.approved_at,
+          NOTIFICATION.is_archived,
           NOTIFICATION.last_date_to_apply,
         ],
         limit,
@@ -271,7 +272,11 @@ export async function getNotificationsByCategory(
       });
 
       let items = result.results;
-      items = items?.filter(item => item.approved_at);
+      // categoryGsi has no built-in archived exclusion (unlike
+      // fetchDynamoDBWithLimit, used by the CASE 1 "all" branch above) — a
+      // notification stays in this index once created, so an admin marking
+      // one archived did nothing here without this check.
+      items = items?.filter((item) => item.approved_at && !item.is_archived);
       if (search) {
         items = items.filter((item) =>
           item.title?.toLowerCase().includes(search),
@@ -427,6 +432,8 @@ export async function getNotificationsByState(
           NOTIFICATION.title,
           NOTIFICATION.created_at,
           NOTIFICATION.state,
+          NOTIFICATION.approved_at,
+          NOTIFICATION.is_archived,
           NOTIFICATION.last_date_to_apply,
         ],
         limit,
@@ -435,6 +442,12 @@ export async function getNotificationsByState(
       });
 
       let items = result.results;
+      // stateGsi has no built-in approved/archived exclusion (unlike
+      // fetchDynamoDBWithLimit, used by the CASE 1 "all" branch above) — a
+      // notification lands in this index the moment it's created, so
+      // without this check a still-pending draft or an archived listing
+      // would both stay visible here indefinitely.
+      items = items.filter((item) => item.approved_at && !item.is_archived);
 
       if (search) {
         items = items.filter((item) =>
@@ -699,46 +712,121 @@ export interface IOpenNotificationItem {
 }
 
 /**
+ * In-memory cache of every approved, non-archived notification (fee already
+ * joined in) that getOpenNotifications filters/sorts/paginates over.
+ *
+ * Previously, every single call to getOpenNotifications — every filter
+ * change, every keystroke in the search box (debounced, but still one call
+ * per pause), every infinite-scroll page — re-ran a full scan of the entire
+ * Notification# partition from scratch, and then did one *additional*
+ * DynamoDB round trip per item on the returned page just to fetch its fee.
+ * That's why the "Explore Open Opportunities" list felt slow: the cost grows
+ * with the total number of notifications ever created, repeated on every
+ * request, for data that only actually changes when an admin approves,
+ * edits, or archives a notification.
+ *
+ * Fix: one query fetches META and FEE items together (they share the same
+ * partition in this single-table design, so this costs nothing extra over
+ * fetching META alone) and joins them by id — no more per-page fee lookups
+ * — and the result is cached for a short TTL, mirroring the same
+ * refresh-on-stale pattern already used for the admin-role cache
+ * (authMiddleware.ts) and the platform-settings cache. A newly-approved
+ * notification can take up to the TTL to appear; that's an acceptable
+ * tradeoff for not re-scanning the whole table on every keystroke.
+ */
+interface CachedOpenNotification {
+  sk: string;
+  title?: string;
+  category?: string;
+  state?: string;
+  department?: string;
+  total_vacancies?: number;
+  last_date_to_apply?: number;
+  created_at?: number;
+  general_fee?: number;
+}
+let cachedOpenNotifications: CachedOpenNotification[] | null = null;
+let openNotificationsCacheRefreshedAt = 0;
+const OPEN_NOTIFICATIONS_CACHE_TTL = 60 * 1000;
+
+async function ensureOpenNotificationsCache(): Promise<CachedOpenNotification[]> {
+  if (cachedOpenNotifications !== null && Date.now() - openNotificationsCacheRefreshedAt <= OPEN_NOTIFICATIONS_CACHE_TTL) {
+    return cachedOpenNotifications;
+  }
+
+  // META and FEE share one partition, so one query reads both — the `type`
+  // OR-filter below reuses the #type name placeholder for both clauses
+  // (only :type / :type_fee value placeholders differ), the same trick the
+  // Contact admin list's dateFrom/dateTo range filter already relies on.
+  const items = await fetchDynamoDB<INotification & { general_fee?: number }>(
+    ALL_TABLE_NAMES.Notification,
+    undefined,
+    [
+      NOTIFICATION.sk,
+      NOTIFICATION.title,
+      NOTIFICATION.category,
+      NOTIFICATION.state,
+      NOTIFICATION.department,
+      NOTIFICATION.total_vacancies,
+      NOTIFICATION.last_date_to_apply,
+      NOTIFICATION.created_at,
+      NOTIFICATION.approved_at,
+      NOTIFICATION.type,
+      NOTIFICATION.fee.general_fee,
+    ],
+    {
+      [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
+      type_fee: NOTIFICATION_TYPE.FEE,
+    },
+    "(#type = :type or #type = :type_fee)",
+    undefined,
+    false, // exclude archived
+  );
+
+  const bareId = (sk: string | undefined, suffix: string) =>
+    sk?.replace(`${TABLE_PK_MAPPER.Notification}`, "")?.replace(suffix, "") ?? "";
+
+  const feeById = new Map<string, number | undefined>();
+  for (const item of items) {
+    if (item.type === NOTIFICATION_TYPE.FEE) {
+      feeById.set(bareId(item.sk, NOTIFICATION_TYPE_MAPPER.FEE), item.general_fee);
+    }
+  }
+
+  cachedOpenNotifications = items
+    .filter((n) => n.type === NOTIFICATION_TYPE.META && typeof n.approved_at === "number")
+    .map((n) => {
+      const id = bareId(n.sk, NOTIFICATION_TYPE_MAPPER.META);
+      return {
+        sk: id,
+        title: n.title,
+        category: n.category,
+        state: n.state,
+        department: n.department,
+        total_vacancies: n.total_vacancies,
+        last_date_to_apply: n.last_date_to_apply as unknown as number | undefined,
+        created_at: n.created_at,
+        general_fee: feeById.get(id),
+      };
+    });
+  openNotificationsCacheRefreshedAt = Date.now();
+  return cachedOpenNotifications;
+}
+
+/**
  * Fetches currently-open notifications (approved, not archived, deadline not
  * passed) across every category/state, with ad-hoc filtering + sorting +
- * offset pagination applied in memory — same full-scan-then-filter approach
- * already used by getHomePageNotifications/getLatestNotifications/
- * getAvailableFilters above, since these filters don't map onto a single GSI.
- * Fee/qualification aren't filterable here: those live on separate FEE/
- * ELIGIBILITY items in the single-table design, and joining them for every
- * notification just to filter would mean fetching far more than this scan.
+ * offset pagination applied in memory over the cache above.
  */
 export async function getOpenNotifications(
   filters: IOpenNotificationFilters,
 ): Promise<{ data: IOpenNotificationItem[]; total: number; hasMore: boolean }> {
   try {
-    const items = await fetchDynamoDB<INotification>(
-      ALL_TABLE_NAMES.Notification,
-      undefined,
-      [
-        NOTIFICATION.sk,
-        NOTIFICATION.title,
-        NOTIFICATION.category,
-        NOTIFICATION.state,
-        NOTIFICATION.department,
-        NOTIFICATION.total_vacancies,
-        NOTIFICATION.last_date_to_apply,
-        NOTIFICATION.created_at,
-        NOTIFICATION.approved_at,
-        NOTIFICATION.type,
-      ],
-      {
-        [NOTIFICATION.type]: NOTIFICATION_TYPE.META,
-      },
-      "#type = :type",
-      undefined,
-      false, // exclude archived
-    );
+    const items = await ensureOpenNotificationsCache();
 
     const now = Date.now();
     let filtered = items.filter(
       (n) =>
-        typeof n.approved_at === "number" &&
         typeof n.last_date_to_apply === "number" &&
         n.last_date_to_apply >= now,
     );
@@ -788,35 +876,16 @@ export async function getOpenNotifications(
     const offset = filters.offset && filters.offset > 0 ? filters.offset : 0;
     const page = filtered.slice(offset, offset + limit);
 
-    // Fee lives on a separate FEE item per notification — only worth joining
-    // for the small page actually being returned, not the whole filtered set.
-    const pageIds = page.map(
-      (n) =>
-        n.sk
-          ?.replace(`${TABLE_PK_MAPPER.Notification}`, "")
-          ?.replace(`${NOTIFICATION_TYPE_MAPPER.META}`, "") ?? "",
-    );
-    const generalFees = await Promise.all(
-      pageIds.map(async (id) => {
-        if (!id) return undefined;
-        const feeSk = `${TABLE_PK_MAPPER.Notification}${id}${NOTIFICATION_TYPE_MAPPER.FEE}`;
-        const feeItems = await fetchDynamoDB<any>(ALL_TABLE_NAMES.Notification, feeSk, [
-          NOTIFICATION.fee.general_fee,
-        ]);
-        return feeItems?.[0]?.general_fee as number | undefined;
-      }),
-    );
-
-    const data: IOpenNotificationItem[] = page.map((n, idx) => ({
-      sk: pageIds[idx],
+    const data: IOpenNotificationItem[] = page.map((n) => ({
+      sk: n.sk,
       title: n.title ?? "",
       category: n.category ?? "",
       state: n.state ?? "",
       department: n.department ?? "",
       total_vacancies: n.total_vacancies,
-      last_date_to_apply: n.last_date_to_apply as unknown as number | undefined,
+      last_date_to_apply: n.last_date_to_apply,
       created_at: n.created_at,
-      general_fee: generalFees[idx],
+      general_fee: n.general_fee,
     }));
 
     return { data, total, hasMore: offset + limit < total };
