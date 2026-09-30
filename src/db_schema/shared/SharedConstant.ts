@@ -72,6 +72,10 @@ export const ALL_TABLE_NAMES = {
   GuidanceFeedback: "GuidanceFeedback",
   Contact: "Contact",
   PlatformSettings: "PlatformSettings",
+  TestSeries: "TestSeries",
+  MockTest: "MockTest",
+  MockTestAttempt: "MockTestAttempt",
+  MockTestAttemptRequest: "MockTestAttemptRequest",
 };
 
 export const TABLE_PK_MAPPER = {
@@ -84,6 +88,10 @@ export const TABLE_PK_MAPPER = {
   GuidanceFeedback: "GuidanceFeedback#",
   Contact: "Contact#",
   PlatformSettings: "PlatformSettings#",
+  TestSeries: "TestSeries#",
+  MockTest: "MockTest#",
+  MockTestAttempt: "MockTestAttempt#",
+  MockTestAttemptRequest: "MockTestAttemptRequest#",
 };
 
 export const INSERT_ITEM_MAPPER = {
