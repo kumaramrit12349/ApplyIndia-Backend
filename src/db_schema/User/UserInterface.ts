@@ -43,7 +43,7 @@ export interface IUser {
     subscribed_topics?: string[];
 }
 
-export type AdminRole = "creator" | "reviewer" | "senior_reviewer" | "admin" | "guidance_partner";
+export type AdminRole = "creator" | "reviewer" | "senior_reviewer" | "admin" | "guidance_partner" | "test_series_manager";
 
 export type DataWindow =
     | "last_1_month"

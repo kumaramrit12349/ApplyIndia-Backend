@@ -10,6 +10,9 @@ import guidanceBookingRoutes from "./guidanceBooking"
 import guidanceAdminRoutes from "./guidanceAdmin"
 import contactAdminRoutes from "./contactAdmin"
 import platformSettingsRoutes from "./platformSettings"
+import testSeriesAdminRoutes from "./testSeriesAdmin"
+import mockTestAdminRoutes from "./mockTestAdmin"
+import mockTestRoutes from "./mockTest"
 
 const router = Router();
 
@@ -24,5 +27,8 @@ router.use("/guidance", guidanceBookingRoutes);
 router.use("/guidance-admin", guidanceAdminRoutes);
 router.use("/contact", contactAdminRoutes);
 router.use("/platform-settings", platformSettingsRoutes);
+router.use("/test-series-admin", testSeriesAdminRoutes);
+router.use("/mock-test-admin", mockTestAdminRoutes);
+router.use("/mock-tests", mockTestRoutes);
 
 export default router;
